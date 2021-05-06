@@ -1,0 +1,28 @@
+study_id,wbgroup,country,pubstat,num_test,num_cohort,quality
+1,High income,Germany,Non-peer reviewed pre-print,2,1,Single gate
+2,High income,Israel,Peer-reviewed and published,2,2,Single gate
+3,Lower-middle income,India,Peer-reviewed pre-print,1,1,Single gate
+4,Lower-middle income,India,Peer-reviewed and published,1,1,Single gate
+5,Upper-middle income,Brazil,Non-peer reviewed pre-print,1,1,Single gate
+6,High income,Spain,Peer-reviewed and published,5-8,3-5,Single gate
+7,Lower-middle income,India,Peer-reviewed and published,1,1,Single gate
+8,High income,France,Peer-reviewed pre-print,3,1,Single gate
+9,High income,USA,Non-peer reviewed pre-print,2,2,Single gate
+10,Upper-middle income,Thailand,Peer-reviewed and published,2,1,Single gate
+11,High income,Italy,Peer-reviewed and published,1,1,Single gate
+12,High income,Germany,Peer-reviewed and published,2,2,Single gate
+13,Lower-middle income,India,Peer-reviewed and published,1,1,Single gate
+14,Upper-middle income,Brazil,Peer-reviewed and published,2,1,Single gate
+15,High income,USA,Peer-reviewed and published,5-8,2,Single gate
+16,High income,USA,Peer-reviewed and published,1,1,Two gate
+17,High income,USA,Peer-reviewed and published,3,1,Two gate
+18,High income,USA,Peer-reviewed and published,1,1,Two gate
+19,High income,Italy,Non-peer reviewed pre-print,1,1,Two gate
+20,Lower-middle income,India,Non-peer reviewed pre-print,3,3-5,Two gate
+21,High income,South Korea,Peer-reviewed and published,5-8,1,Two gate
+22,High income,Canada,Peer-reviewed and published,5-8,2,Two gate
+23,High income,USA,Peer-reviewed and published,2,1,Two gate
+24,Lower-middle income,India,Peer-reviewed and published,5-8,3-5,Two gate
+25,High income,USA,Non-peer reviewed pre-print,1,1,Two gate
+26,Upper-middle income,Thailand,Peer-reviewed and published,1,1,Two gate
+27,High income,USA,Non-peer reviewed pre-print,5-8,1,Two gate
