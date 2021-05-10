@@ -1,11 +1,11 @@
 ---
 title: "R Notebook for Cochrane systematic review on pNAAT for SARS-CoV-2"
 output:
-  word_document:
-    toc: yes
   html_notebook:
     toc: yes
     toc_float: yes
+  word_document:
+    toc: yes
   html_document:
     df_print: paged
     toc: yes
@@ -13,7 +13,11 @@ output:
     toc: yes
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook including code for all analyses within the Cochrane Review on Pooled versus individual nucleic acid amplification testing (pNAAT) for detection of active SARS-CoV-2 infection. It requires the following datasets 
+
+* pnaat_desc_study.csv
+* pnaat_desc.csv
+
 
 # 1. Descriptive statistics
 ## 1.1 Preliminaries
@@ -28,12 +32,10 @@ Load the R packages:
 "ggplot2", to enable plotting functions
 "gtsummary" and "gt" to enable creation of publication ready tables
 ```{r message=FALSE, warning=FALSE}
-library(tidyverse)
-library(gtsummary)
-library(ggplot2)
-library(labelled)
-library(forcats)
-library(gt)
+library(tidyverse) # to enable 'tidy' collection of packages, including dplyr, ggplot2, purrr, forcats, readr
+library(labelled) # to attach labels to variables and variable levels  
+library(gtsummary) # to enable creation of print-ready tables
+library(gt) # to enable creation of print-ready tables
 library(robvis) # R package for producing risk of bias summary figures
 ```
 
@@ -255,36 +257,57 @@ stacked
 # 2. Meta-analysis
 ## 2.1 Preliminaries
 ### Load packages required
-Load "lme4" and "msm" R packages. Meta-analysis requires the function glmer from the "lme4" package to fit a generalized linear mixed-effects model and the function deltamethod from "msm" package to calculate confidence intervals for coefficients.
+We conducted meta-analysis using:
+
+* "lme4" and related R packages for a generalised linear mixed model (GLMM) approach. 
+*  "meta4diag* and related packages for a Bayesian approach.
+
+Install and load the following packages
+
 ```{r message=FALSE, warning=FALSE}
-library(lme4) # for generalised linear mixed regression analysis #
+library(mgcv) # For exploring non-linear relationships between covariates and outcomes using GAM.
+library(lme4) # for generalised linear mixed model (GLMM) regression analysis #
+library(effects) # To obtain and plot coefficients and residuals from GLM(M)
+library(performance) # Provides function to obtain ICC for GLMM
 library(msm) # enables calculation of DOR confidence intervals by delta-method #
 library(ggeffects) # provides easy conversion of coefficients to predicted probabilities
-library(meta4diag) # allows for Bayesian 
+library(partR2) # calculates semi-partial (part) R2 indicating % total variance explained by fixed effects of explanatory varaibles in a glmm.
+library(DHARMa) # For residual diagnostics on generalised linear models
+library(car) # For identifiying multi-colinearity by variable inflation factors (vif)
 library(metafor)
 library(dmetar)
 library(sjPlot)
-library(partR2) # calculates semi-partial (part) R2 indicating % total variance explained by fixed effects of explanatory varaibles in a glmm.
+library(sjmisc)
 library(lmtest)# allows comparison of nested models
+library(meta4diag) # allows for Bayesian GLMM
 library(binom) # allows calculation of exact binomial and Bayesian confidence intervals
-library(DHARMa) # For residual diagnostics on generalised linear models
+library(LearnBayes) # For defining priors
 ```
 
 ### Prepare data for meta-analysis
-Reshape the 'metadata' tibble (created above) for bivariate binomial meta-analysis. The new tibble called 'Y' incorporates
+Reshape the 'metadata' tibble (created above) for bivariate binomial meta-analysis. The new tibble called 'Y' incorporates:
 
 * One line each for data needed for sensitivity (diseased and true positives) and specificity (not diseased and true negatives) within each test evaluation,
 * Dummy variables indicating rows referring to sensitivity or specificity
 * Data for all other variables duplicated for sensitivity and specificity
 
 ```{r message=FALSE, warning=FALSE}
-ma <- as.data.frame(metadata) # convert metadata to dataframe for glmer compatibility
+# convert metadata to dataframe for glmer compatibility
+ma <- as.data.frame(metadata)
+# redefine variables describing percentages (*weak_pos; positivity_rate; multipos*) as proportions and then transform by folded powers (sQRT(x)-SQRT(1-x))
+ma <- ma %>% mutate(weak_pos = weak_pos/100)
+ma <- ma %>% mutate(positivity_rate = positivity_rate/100)
+ma <- ma %>% mutate(multipos = multipos/100)
+ma <- ma %>% mutate(weak_posfold = weak_pos^1/2-(1-weak_pos)^1/2)
+ma <- ma %>% mutate(positivity_ratefold = positivity_rate^1/2-(1-positivity_rate)^1/2)
+ma <- ma %>% mutate(multiposfold = multipos^1/2-(1-multipos)^1/2)
+ma <- ma %>% mutate(targnum = if_else(num_target>1,1,0))
+# Create additional variables and reshape for bivariate analysis with dummy variables for sensitivity and specificity
 ma$n1 <- ma$t_p + ma$f_n # define number with disease
 ma$n0 <- ma$t_n + ma$f_p # define number without disease
 ma$true1 <- ma$t_p # define true positives
 ma$true0 <- ma$t_n # define true negatives
-ma$study <- 1:73 #give unique study id
-# reshape into format for bivariate analysis with dummy variables for sens and spec
+ma$testeval <- 1:73 #give unique study id
 Y1 <- reshape(ma, direction="long", 
                varying=list(c("n1","n0"), c("true1","true0")),
                timevar="sens",times=c(1,0),v.names=c("n","true"))
@@ -297,17 +320,16 @@ Y1se <- Y1 %>% filter(sens==1)
 Y1se$naat <- dplyr::recode(Y1se$naat, "Cartridge-based RT-PCR" = "RT-PCR")
 Y1se$naat <- forcats::fct_relevel(Y1se$naat,"RT-PCR")
 Y1se$naat = relevel(Y1se$naat, ref="RT-PCR")
-```
 
-Create separate datasets for "minipool" "matrix" and "combinatorial"
-NOTE MAY NOT NEED BELOW AS CAN FILTER WITHIN GLMERg
-```{r message=FALSE, warning=FALSE}
+# Create separate datasets for "minipool" "matrix" and "combinatorial"
 # Bivariate model datasets
 ymp2 <- Y1 %>% filter(pnaat=="Minipool",pool_size_gp =="2") # minipool size 2
 ymp4_7 <- Y1 %>% filter(pnaat=="Minipool",pool_size_gp =="4 to 7") # minipool size 4 to 7
 ymp8_15 <- Y1 %>% filter(pnaat=="Minipool",pool_size_gp =="8 to 15") # minipool size 8 to 15
 ymp16_31 <- Y1 %>% filter(pnaat=="Minipool",pool_size_gp =="16 to 31") #minipool size 16 to 31
-y1mp <- Y1 %>% filter(pnaat=="Minipool")  # for minipool (all sizes) #
+Y1mp <- Y1 %>% filter(pnaat=="Minipool")  # for minipool (all sizes) #
+Y1mp$naat <- dplyr::recode(Y1mp$naat, "Digital RT-PCR" = 2)
+Y1mp$naat <- dplyr::recode(Y1mp$naat, "TMA" = 3)
 y1mat <- Y1 %>% filter(pnaat=="Matrix")  # for matrix #
 y1com <- Y1 %>% filter(pnaat=="Combinatorial")  # for combinatorial #
 # Univariate model datasets
@@ -320,16 +342,23 @@ y1semat <- Y1se %>% filter(pnaat=="Matrix")  # for matrix #
 y1secom <- Y1se %>% filter(pnaat=="Combinatorial")  # for combinatorial #
 ```
 
+```{r message=FALSE, warning=FALSE}
+Y1mp <- Y1mp %>% mutate(multipos = scale(multipos, center = T, scale = F))
+
+```
+
 ## 2.2 Summary estimates by pNAAT design
 
-### 2.2.1 Initial asssessment of heterogeneity in paired forest plots
+### 2.2.1 Initial asssessment of heterogeneity
 Use:
 
-1. Visual inspection
-2. Galbraith plot
-3. Influence diagnostics (removing (a) test evaluations (b) studies) using
+#### Visual inspection of paired forest plots
+
+#### Galbraith plot
+
+#### Influence diagnostics (removing (a) test evaluations (b) studies) using
 influence.merMod from the package lme4.
-4. Check if assumption of gaussian distribution to random effects holds using sjPlot
+#### Check if assumption of gaussian distribution to random effects holds using sjPlot
 
 Observations:
 
@@ -440,8 +469,8 @@ Based on these observations use the glmer function in "lme4" to fit:
 #### model 1 bivariate binomial random-effects with unstructured covariance matrix
 Use glmer to fit an integer only bivariate binomial multi-level (random-effects) meta-analysis with an unstructured covariance matrix.
 ```{r message=FALSE, warning=FALSE}
-ymp_mod1 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens+spec|study),
-                    data = y1mp,family=binomial,nAGQ=1,verbose=0)
+ymp_mod1 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens+spec|testeval),
+                    data = Y1mp,family=binomial,nAGQ=1,verbose=0)
 ymp_mod1_sum <- summary(ymp_mod1)
 ymp_mod1_sum
 ```
@@ -455,8 +484,8 @@ Observations
 #### model 2 bivariate binomial random-effects with zero covariance matrix
 Use glmer to fit an integer only bivariate binomial multi-level (random-effects) meta-analysis with a zero covariance matrix.
 ```{r message=FALSE, warning=FALSE}
-ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|study)+(0+spec|study),
-                    data = y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval)+(0+spec|testeval),
+                    data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod2_sum <- summary(ymp_mod2)
 ymp_mod2_sum
 ```
@@ -469,8 +498,8 @@ Observations:
 
 #### Model 3: Bivariate binomial partial random effects model 
 ```{r message=FALSE, warning=FALSE}
-ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|study),
-                    data = y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|cohort_id),
+                    data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod3_sum <- summary(ymp_mod3)
 ymp_mod3_sum
 ```
@@ -485,44 +514,57 @@ Observations:
 #### model 4 Sensitivity only model
 Use glmer to fit an integer only univariate (outcome  is sensitivity only) binomial multi-level (random-effects) meta-analysis
 
+##### Cohort at level 2
 ```{r message=FALSE, warning=FALSE}
 
 # Cohort as level 2
-ysemp1 <- glmer (formula= cbind(true,n-true)~ 0+sens+(0+sens|cohort_id),
+ysemp1 <- glmer (formula= cbind(true,n-true)~ 1+(1|cohort_id),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp1_sum <- summary(ysemp1)
 ysemp1_sum
-
-# study as level 2
-ysemp2 <- glmer (formula= cbind(true,n-true)~ 0+sens+(0+sens|study),
+ysemp1icc <- icc(ysemp1,by_group=T,tolerance=1e-05)
+ysemp1icc
+```
+##### study as level 2
+```{r message=FALSE, warning=FALSE}
+ysemp2 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp2_sum <- summary(ysemp2)
 ysemp2_sum
+ysemp2icc <- icc(ysemp2,by_group=T,tolerance=1e-05)
+ysemp2icc
+```
 
-# Cross-classified model
-ysemp3 <- glmer (formula= cbind(true,n-true)~ 0+sens+(0+sens|study)+(0+sens|cohort_id),
+##### Nested (studies are nested within cohorts)
+```{r message=FALSE, warning=FALSE}
+ysemp3 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval/cohort_id),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp3_sum <- summary(ysemp3)
 ysemp3_sum
-
-# Nested model
-ysemp4 <- glmer (formula= cbind(true,n-true)~ 0+sens+(0+sens|study/cohort_id),
-                    data = y1semp,family=binomial, nAGQ=1,verbose=0) 
-ysemp4_sum <- summary(ysemp4)
-ysemp4_sum
-
-lrtest(ysemp4,ysemp3,ysemp2,ysemp1)
+ysemp3icc <- icc(ysemp3,by_group=T,tolerance=1e-05)
+ysemp3icc
 ```
-Observation
+##### Compare models
+```{r message=FALSE, warning=FALSE}
+lrtest(ysemp3,ysemp2,ysemp1)
+```
+Observations
 
-* A generalised linear mixed model (glmm) with random-effects at the test-evaluation (here labelled as 'study') captures between-study variation efficiently.
-* Entry of test evaluation and cohort level random effects with a cross-classified structure is also suitable but may result in over-fitting.
+* 55% to 67% of total variation in sensitivity occurs between cohorts or test-evaluations (h)
+* A generalised linear mixed model (glmm) with random-effects at the test-evaluation level captures between-study variation efficiently.
+* A 3-level model with random effects for test evaluations nested within cohorts is also suitable but may result in over-fitting.
+
+
+FUNCTION FOR OBTAINING PREDICTED SENS + SPEC and 95% CI ....LOOK FOR MORE EFFICIENT METHOD
+```{r message=FALSE, warning=FALSE}
+ggpredict(ymp_mod3, terms=c(sens,spec))
+```
 
 ```{r message=FALSE, warning=FALSE}
-lsens <- ymp_mod1_sum$coeff[1,1]
-lspec <-ymp_mod1_sum$coeff[2,1]
-se.lsens <-ymp_mod1_sum$coeff[1,2]
-se.lspec <-ymp_mod1_sum$coeff[2,2]
+lsens <- ymp_mod3_sum$coeff[1,1]
+lspec <-ymp_mod3_sum$coeff[2,1]
+se.lsens <-ymp_mod3_sum$coeff[1,2]
+se.lspec <-ymp_mod3_sum$coeff[2,2]
 sensymp1 <- c(lsens,lsens-se.lsens-qnorm(0.975)*se.lsens,
               lsens-se.lsens+qnorm(0.975)*se.lsens)
 specymp1 <- c(lspec,lspec-se.lspec-qnorm(0.975)*se.lspec,
@@ -535,6 +577,18 @@ logit_y_int = data.frame(estimate = c(lsens,lspec),
                          row.names=c("lsens","lspec"))
 sensitivity_ymp1 <- plogis(sensymp1)
 specificity_ymp1 <- plogis(specymp1)
+sensitivity_ymp1
+specificity_ymp1
+
+lsens <- ysemp2_sum$coeff[1,1]
+se.lsens <-ysemp2_sum$coeff[1,2]
+sensymp1 <- c(lsens,lsens-se.lsens-qnorm(0.975)*se.lsens,
+              lsens-se.lsens+qnorm(0.975)*se.lsens)
+logit_y_int = data.frame(estimate = lsens,
+                         lci = lsens-qnorm(0.975)*se.lsens,
+                         uci = lsens+qnorm(0.975)*se.lsens)
+sensitivity_ymp1 <- plogis(sensymp1)
+sensitivity_ymp1
 ```
 
 ```{r message=FALSE, warning=FALSE}
@@ -544,38 +598,38 @@ specificity_ymp1
 
 
 
-## Sub-group analyses
+## 2.3 Sub-group analyses
 
 ### Pool size groups
 ```{r message=FALSE, warning=FALSE}
 ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|study), data = ymp2,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+(0+sens|testeval), data = ymp2,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod2_sum <- summary(ymp_mod2)
 ymp_mod2_sum
 
 ymp_mod4_7 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|study), data = ymp4_7,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+(0+sens|testeval), data = ymp4_7,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod4_7_sum <- summary(ymp_mod4_7)
 ymp_mod4_7_sum
 
 ymp_mod8_15 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|study), data = ymp8_15,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+(0+sens|testeval), data = ymp8_15,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod8_15_sum <- summary(ymp_mod8_15)
 ymp_mod8_15_sum
 
 ymp_mod16_31 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|study), data = ymp16_31,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+(0+sens|testeval), data = ymp16_31,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod16_31_sum <- summary(ymp_mod16_31)
 ymp_mod16_31_sum
 ```
 
-## Meta-regression exploring heterogeneity
-Meta-regressions were conducted with random-effects at levels of 
+## 2.4 Meta-regression exploring heterogeneity
+Meta-regressions were conducted for:
 
-(a) test evaluation 
-(b) study cohort
-
-Final meta-regression models were derived by
+(a) Sensitivity as outcome (univariate) and test evaluation as level 2 variable
+(b) Sensitivity as outcome (univariate) and cohort as level 2 variable
+(c) Sensitivity and specificity as outcome (bivariate) and test evaluation as level 2 variable, with random effects for sensitivity only and separate fixed effects for sensitivity and specificity
+(d) Sensitivity and specificity as outcome (bivariate) and cohort as level 2 variable,  with random effects for sensitivity only and separate fixed effects for sensitivity and specificity
 
 * A block-wise backwards-elimination approach in which covariates were entered in groups (blocks) defined a priori on the basis of theoretical importance:
    * Block 1 (matchiing sub-groups): naat, symptoms, pool size, sample type,
@@ -590,44 +644,106 @@ Final meta-regression models were derived by
 * After entering the first block, we removed covariates, starting with those non-significantly associated with sensitivity and highly colinear with other variables. We reviewed BIC and likelihood-ratio after removing variables to determine if the covariate could be removed without compromising model fit. This continued until only covariates that were significant (at a=0.05) and improved model fit (according to lrtest) were retained.
 * This process was applied for second and third rank blocks.
 
-### (a) Random effects at test evaluation level
+### 2.4.1 Exploring relationships between continuous covariates and sensitivity
+Before meta-regression we examine nature of relationships between independent variables (continuous covariates) and outcomes (sensitivity, specificity):
+
+* Since we use a logit link in the binomial model we examine relationships between the inverse logit of covariates and sensitivity (i.e TP as proportion of all with disease (TP+FN)).
+* Continuous variables reflecting proportions (*weak_pos:* positives with low-viral load; *positivity_rate:* tested samples positive for SARS-CoV-2; *multipos:* positive pools containing >1 positive sample) were transformed by folded root [x^(1/2)-(1-x)^(1/2)] to ensure bounded by 0 and 1.
+* We considered non-linear relationships between explanatory variables and outcomes
+
+```{r message=FALSE, warning=FALSE}
+y1semp<- y1semp %>% mutate(sensitivity = t_p/disease_p)
+y1sempexp<- y1semp %>% mutate(logit = log(sensitivity/(1-sensitivity)))
+y1semp_explore <- y1sempexp %>% dplyr::select(weak_posfold, multiposfold,
+                                              positivity_ratefold, log2p, 
+                                              log2lod,logit,sensitivity)
+predictors <- colnames(y1semp_explore)
+y1semp_explore2 <-y1semp_explore %>%
+  gather(key = "predictors", value = "predictor.value", -c(logit,sensitivity,
+                                                           weak_posfold,
+                                                           multiposfold,
+                                                           positivity_ratefold))
+
+plot1 <- ggplot(y1semp_explore2, aes(predictor.value, logit))+
+  geom_point(size = 0.3, alpha = 0.5) +
+  geom_smooth(method = "loess", size = 0.5) + 
+  geom_smooth(method = "lm", color="darkred", linetype="dashed", size = 0.5, se=FALSE) + 
+  facet_wrap(~predictors, scales = "free_x")+
+  labs(y = "Logit Sensitivity", x = "Log 2 of Limit of detection (lod) or Pool size (p)")
+
+# Bind the logit and tidying the data for plot
+y1semp_explore3 <-y1semp_explore %>%
+  gather(key = "predictors", value = "predictor.value", -c(logit,sensitivity,
+                                                           log2p, log2lod))
+
+plot2 <- ggplot(y1semp_explore3, aes(predictor.value, logit))+
+  geom_point(size = 0.3, alpha = 0.5) +
+  geom_smooth(method = "loess", size = 0.5) + 
+  geom_smooth(method = "lm", color="darkred", linetype="dashed", size = 0.5, se=FALSE) + 
+  facet_wrap(~predictors, scales = "free_x")+
+  labs(y = "Logit Sensitivity", x = "Folded root of x")
+
+ggarrange(plot1,plot2,ncol=1,nrow=2)
+```
+Observations:
+
+*  Log2 of pool size (*log2p*) and the (folded root of) proportion of positives having low viral load (*weak_posfold*) were linearly and inversely associated with logit of sensitivity as anticipated.
+* Less clear associations were seen with log 2 of the assay limit of detection (*log2lod*), proportion of positive pools containing more than 1 positive (*multiposfold*), and all were adequately described by linear relationships after appropriate transformations.
+
+### 2.4.2 Exploring correlations between continuous covariates
+```{r message=FALSE, warning=FALSE}
+select_explanatory <- c("log2p", "log2lod","weak_posfold","multiposfold","positivity_ratefold")
+y1sempexp %>% 
+  remove_labels() %>% 
+  ggpairs(columns = select_explanatory)
+
+```
+
+Observations:
+
+*  Correlations were generally weak except for:
+
+* Inverse relation between pool size (log2p) and test positivity rate (-0.583)
+* Positive relation between pool size (log2p) and multiple positives per pool (+0.479)
+
+Simultaneous inclusion of these variables risks multi-colinearity
+
+
+### 2.4.3 Models with Random effects at test evaluation level
 
 #### Block 1 model
 ```{r message=FALSE, warning=FALSE}
 # Saturated Block 1 model 
-ysemp6 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+symptoms+log2p+sample+pool_type+(0+sens|study),
+ysemp4 <- glmer (formula= cbind(true,n-true)~ 1+weak_pos+naat+symptoms+log2p+sample+pool_type+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+ysemp4_sum <- summary(ysemp4)
+
+ysemp5 <- glmer (formula= cbind(true,n-true)~ 1+weak_pos+naat+log2p+sample+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+ysemp5_sum <- summary(ysemp5)
+tab_model(ysemp4,ysemp5)
+```
+#### Block 2 model
+```{r message=FALSE, warning=FALSE}
+# Saturated Block 2 model 
+ysemp6 <- glmer (formula= cbind(true,n-true)~ 1+weak_posfold+naat+log2p+sample+multiposfold+quality+log2lod+positivity_ratefold+ (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp6_sum <- summary(ysemp6)
 ysemp6_sum
 
-ysemp7 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+sample+(0+sens|study),
+ysemp7 <- glmer (formula= cbind(true,n-true)~ 1+weak_posfold+log2p+naat+sample+
+                   (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp7_sum <- summary(ysemp7)
 ysemp7_sum
-```
-#### Block 2 model
-```{r message=FALSE, warning=FALSE}
-# Saturated Block 2 model 
-ysemp7 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+sample+multipos+quality+lod+positivity_rate+
-                   (0+sens|study),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp7_sum <- summary(ysemp7)
-ysemp7_sum
-
-ysemp8 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+sample+
-                   (0+sens|study),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp8_sum <- summary(ysemp8)
-ysemp8_sum
-lrtest(ysemp7,ysemp8)
 ```
 
 #### Block 3 model
@@ -636,47 +752,35 @@ modified protocol, modified interpretation, regulatory status,
    genes, storage of samples, reference standard same cut-off and assay.
 ```{r message=FALSE, warning=FALSE}
 # Saturated Block 3 model 
-ysemp9 <- glmer (formula= cbind(true,n-true)~0+sens+weak_pos+naat+log2p
-                 +sample+modified_protocol+modified_interpret+reg+num_target+targets_for_pos+storage+refst_same_cutoff+refstd_same_assay+
-                   (0+sens|study),
+ysemp9 <- glmer (formula= cbind(true,n-true)~1+weak_posfold+naat+log2p
+                 +sample+modified_protocol+modified_interpret+reg+targnum+targnum+storage+refst_same_cutoff+refstd_same_assay+
+                   (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp9_sum <- summary(ysemp9)
-ysemp9_sum
 
-ysemp10 <- glmer (formula= cbind(true,n-true)~0+sens+naat+log2p
-                 +sample+modified_protocol+weak_pos+modified_interpret+reg+num_target+(0+sens|study),
+# FINAL BEST FIT MODEL
+ysemp10 <- glmer (formula= cbind(true,n-true)~1+naat+log2p
+                 +sample+modified_protocol+weak_pos+modified_interpret+reg+
+                   (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp10_sum <- summary(ysemp10)
+ysemp10_table <- tab_model (ysemp2,ysemp5,ysemp7,ysemp10, show.p=FALSE)
+ysemp10_table
+plot_model(ysemp10,sort.est=T)
+
+# Diagnostics on final model
 ysemp10_sum
 simulationOutput <- simulateResiduals(ysemp10, plot = F)
 plot(simulationOutput)
-
+testDispersion(simulationOutput)
+car::vif(ysemp10) # Check for multi-colinearity by VIF
 ```
 
-#### Final metaregression model
-```{r message=FALSE, warning=FALSE}
-ysemp10 <- glmer (formula= cbind(true,n-true)~0+sens+naat+log2p
-                 +sample+modified_protocol+weak_pos+modified_interpret+reg+num_target+(0+sens|study),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp10_sum <- summary(ysemp10)
-ysemp10_sum
-simulation <- simulateResiduals(ysemp10, plot = F)
-```
-
-#### Diagnostic  checks on final metaregression model
-Residuals versus predicted sensitivity (outcome)
-```{r message=FALSE, warning=FALSE}
-plot(simulation)
-testDispersion(simulation)
-```
-
-### (b) Metaregression with random effects at cohort level
+### 2.4.4 Metaregression with random effects at cohort level
 
 #### Block 1 model
 ```{r message=FALSE, warning=FALSE}
@@ -730,18 +834,59 @@ ysemp15 <- glmer (formula= cbind(true,n-true)~0+sens+weak_pos+naat+log2p
 ysemp15_sum <- summary(ysemp15)
 ysemp15_sum
 
-ysemp16 <- glmer (formula= cbind(true,n-true)~0+sens+naat+log2p
-                 +weak_pos+modified_interpret+reg+(0+sens|cohort_id),
+ysemp16 <- glmer (formula= cbind(true,n-true)~0+sens+naat+log2p+
+                 weak_pos+modified_interpret+reg+(0+sens|cohort_id),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp16_sum <- summary(ysemp16)
 ysemp16_sum
-simulation2 <- simulateResiduals(ysemp16, plot = F)
+simulation2 <- simulateResiduals(ysemp16, plot = T)
+testDispersion(simulation2)
+```
 
+### 2.4.5 Metaregression with test evaluation random effects for sensitivity and fixed specificity
+```{r message=FALSE, warning=FALSE}
+Y1mp <- Y1mp %>% mutate(selog2p = log2p*sens)
+Y1mp <- Y1mp %>% mutate(splog2p = log2p*spec)
+Y1mp <- Y1mp %>% mutate(sereg = reg*sens)
+Y1mp <- Y1mp %>% mutate(spreg = reg*spec)
+Y1mp <- Y1mp %>% mutate(semodified_interpret = modified_interpret*sens)
+Y1mp <- Y1mp %>% mutate(semod_protocol = modified_protocol*sens)
+Y1mp <- Y1mp %>% mutate(seweak_pos = weak_pos*sens)
+Y1mp <- Y1mp %>% mutate(spweak_pos = weak_pos*spec)
+Y1mp <- Y1mp %>% mutate(senaat2 = naat2*sens)
+Y1mp <- Y1mp %>% mutate(spnaat2 = naat2*spec)
+Y1mp <- Y1mp %>% mutate(semultipos = multipos*sens)
+Y1mp <- Y1mp %>% mutate(facnaat = as.factor(senaat2))
+Y1mp <- Y1mp %>% mutate(samp = if_else(sample=="Upper respiratory tract swab",1,0))
+Y1mp <- Y1mp %>% mutate(sesamp=samp*sens)
+Y1mp <- Y1mp %>% mutate(facsamp = as.factor(sesamp))
+Y1mp$facnaat <- fct_relevel(Y1mp$facnaat,"3","2","1","0")
+Y1mp <- Y1mp %>% mutate(modprot = if_else(modified_protocol=="T",1,0))
+Y1mp <- Y1mp %>% mutate(modprot=modprot*sens)
+Y1mp <- Y1mp %>% mutate(semodprot = as.factor(modprot))
 ```
 
 ```{r message=FALSE, warning=FALSE}
-plot(simulation2)
-testDispersion(simulation2)
+ypartmp17 <- glmer (formula= cbind(true,n-true)~0+spec+sens+selog2p+seweak_pos+facnaat+facsamp+semodified_interpret+semodprot+sereg+(0+sens|testeval),
+                 data = Y1mp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+ypartmp17_sum <- summary(ypartmp17)
+ypartmp17_sum
+ypartmp17_residuals <-simulateResiduals(ypartmp17, plot = T)
+testDispersion(ypartmp17_residuals)
+```
+
+### 2.4.6 Metaregression with cohort random effects for sensitivity and fixed specificity
+```{r message=FALSE, warning=FALSE}
+ypartmp18 <- glmer (formula= cbind(true,n-true)~0+spec+sens+selog2p+seweak_pos+facnaat+semodified_interpret+sereg+(0+sens|cohort_id),
+                 data = Y1mp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+ypartmp18_sum <- summary(ypartmp18)
+ypartmp18_sum
+ypartmp18_residuals <-simulateResiduals(ypartmp18, plot = T)
+testDispersion(ypartmp18_residuals)
 ```
