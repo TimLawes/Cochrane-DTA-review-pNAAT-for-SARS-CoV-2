@@ -19,31 +19,59 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook including code fo
 * pnaat_desc.csv
 
 
-# 1. Descriptive statistics
-## 1.1 Preliminaries
-### Check working directory
+# 1. Preliminaries
+
+## 1.1 Check working directory
 Open the R project associated with this notebook to ensure the working directory is set to ~/Cochrane-DTA-review-pNAAT-for-SARS-CoV-2
 
-### Load packages required
-Load the R packages:
-"tidyverse" to enable 'tidy' functionality.
-"labelled", to enable easy labelling of variables and factor levels.
-"forcats", to enable easier manipulation of factors
-"ggplot2", to enable plotting functions
-"gtsummary" and "gt" to enable creation of publication ready tables
+## 1.2 Load packages required
+This project will initialise *renv*  when opened. The R package *renv* creates a record of packages required for the project in a linked private package library. This ensures
+
+* Package installations do not over-write your existing (global) package libraries.
+* Package versions are the same as those used within this project.
+
+The following call should install (or copy across from your existing global library) packages that are required for the project 
 ```{r message=FALSE, warning=FALSE}
-library(tidyverse) # to enable 'tidy' collection of packages, including dplyr, ggplot2, purrr, forcats, readr
-library(labelled) # to attach labels to variables and variable levels  
-library(gtsummary) # to enable creation of print-ready tables
-library(gt) # to enable creation of print-ready tables
-library(robvis) # R package for producing risk of bias summary figures
+renv::restore()
 ```
 
-### Read in data and label
+```{r message=FALSE, warning=FALSE}
+
+library(gtsummary) # to enable creation of print-ready tables
+library(gt) # to enable creation of print-ready tables
+library(robvis) # for producing risk of bias summary figures
+library(patchwork) # for composite figures
+library(mgcv) # For exploring non-linear relationships between covariates and outcomes using GAM.
+library(lme4) # for generalised linear mixed model (GLMM) regression analysis #
+library(effects) # To obtain and plot coefficients and residuals from GLM(M)
+library(msm) # enables calculation of DOR confidence intervals by delta-method #
+library(ggeffects) # provides easy conversion of coefficients to predicted probabilities
+library(partR2) # calculates semi-partial (part) R2 indicating % total variance explained by fixed effects of explanatory varaibles in a glmm.
+library(DHARMa) # For residual diagnostics on generalised linear models
+library(car) # For identifiying multi-colinearity by variable inflation factors (vif)
+library(sjPlot) # For plotting predicted probabilities and model outputs
+library(sjmisc)
+library(sjlabelled)
+library(lmtest)# allows comparison of nested models
+library(meta4diag) # allows for Bayesian GLMM
+library(binom) # allows calculation of exact binomial and Bayesian confidence intervals
+library(LearnBayes) # For defining priors
+library(ggpubr) # Assistance with graphics
+library(multilevelTools)
+library(GGally)
+library(gridExtra) # Combining plots generated in base R
+library(lattice) # For Q-Q plots
+library(tidyverse) # to enable 'tidy' collection of packages, including dplyr, ggplot2, purrr, forcats, readr
+```
+
+## 1.3 Read in data and label
 Read in the csv files "pnaat_desc_study" and "pnaat_desc" and prepare for descriptive statistics and meta-analysis.
 ```{r message=FALSE, warning=FALSE}
 # Load study level data and define variables 
-meta_study <- read_csv("pnaat_desc_study.csv", col_types =cols(
+meta_study <- read_csv("pnaat_desc_study.csv", col_types = cols(
+  wbgroup = col_factor()))
+```
+                       col_types =cols(
   wbgroup = col_factor(levels= c("High income","Upper-middle income", 
                                  "Lower-middle income","Low income"),
                                               ordered=TRUE),
@@ -56,11 +84,10 @@ meta_study <- read_csv("pnaat_desc_study.csv", col_types =cols(
                                               ordered=TRUE),
   quality = col_factor()))
 
-# Adjust factor levels for number of tests and cohorts per study variables
-meta_study <- meta_study %>% mutate (n_test = fct_relevel(num_test,
-                                                          "1","2","3","5-8"))
-meta_study <- meta_study %>% mutate (n_cohort = fct_relevel(num_cohort,
-                                                            "1","2","3-5"))
+meta_study <- meta_study %>% mutate (n_test = fct_relevel(
+num_test,"1","2","3","5-8"))
+meta_study <- meta_study %>% mutate (n_cohort = fct_relevel(
+num_cohort, "1","2","3-5"))
 
 # Load test evaluation level data and define variables
 metadata <- read_csv ("pnaat_desc.csv", col_types = cols(
@@ -80,6 +107,7 @@ metadata <- read_csv ("pnaat_desc.csv", col_types = cols(
   pool_type = col_factor(),
   quality = col_factor(),
   modified_protocol = col_factor(),
+  modint = col_factor(levels=c("lower","standard","higher")),
   pnaat = col_factor(),
   targets_for_pos = col_factor(levels=c("1 of 1", "1 of 2", "1 of 3",
                                         "2 of 2","2 of 3")),
@@ -96,21 +124,24 @@ metadata <- read_csv ("pnaat_desc.csv", col_types = cols(
   refstd_assay = col_factor()))
 
 # Create cohort level data
-meta_cohort <- metadata %>% group_by(cohort_id,symptoms,quality) %>% 
-  summarise(maxparticipant = max(totalsamples), maxdisease = max(disease_p),
-            maxno_disease=max(disease_n), maxweak_pos = max(weak_pos))
+meta_cohort <- metadata %>% 
+  group_by(cohort_id,symptoms,quality) %>% 
+  summarise(maxparticipant = max(totalsamples), 
+            maxdisease = max(disease_p),
+            maxno_disease=max(disease_n), 
+            maxweak_pos = max(weak_pos))
 meta_cohort <- meta_cohort %>% mutate(positivity = maxdisease/maxparticipant*100)
 
 
 # Add variable labels
-meta_study <- meta_study %>% set_variable_labels(
+meta_study <- meta_study %>% var_labels (
   study_id = "Number of studies",
   wbgroup = "Country income level classification (World Bank 2020)",
   pubstat = "Publication and peer-review status",
   n_cohort = "Number of cohorts per study",
   n_test = "Number of tests per study")
 
-meta_cohort <- meta_cohort %>% set_variable_labels(
+meta_cohort <- meta_cohort %>% var_labels (
   cohort_id = "Number of cohorts",
   maxparticipant = "Total participants tested (n)",
   maxdisease = "Total participants with disease (positives) (n)",
@@ -119,7 +150,7 @@ meta_cohort <- meta_cohort %>% set_variable_labels(
   positivity = "% Test positivity per cohort",
   symptoms = "Symptom status of cohort")
 
-metadata <- metadata %>% set_variable_labels(
+metadata <- metadata %>% var_labels(
   study_id = "Number of studies",
   wbgroup = "Country income level classification (World Bank 2020)",
   pubstat = "Publication and peer-review status",
@@ -165,6 +196,7 @@ metadata <- metadata %>% set_variable_labels(
   f35_n = "False negatives for cut-off of Cq 35",
   index_assay = "Index test brand",
   refstd_assay = "Reference standard brand")
+# Transform variables for further analysis  
 metadata <- metadata %>% mutate(log2p = log(pool_size,2))
 metadata <- metadata %>% mutate(log2lod = log(lod,2))
 metadata <- metadata %>% mutate(tma = if_else(naat=="TMA",1,0))
@@ -183,10 +215,11 @@ metadata <- metadata %>% mutate(swabmedia = if_else(
   sample_pool=="swab media",1,0))
 metadata <- metadata %>% mutate(rna = if_else(
   pool_type=="RNA",1,0))
-metadata <- metadata %>% mutate(pos2 = positivity_rate^2)
 ```
 
-## 1.2 Table 1 Description of studies
+# 2. Descriptive Statistics
+
+## 2.1 Table 1 Description of studies
 Generate Table 1.
 ```{r message=FALSE}
 # Select variables for each sub-table
@@ -254,37 +287,9 @@ stacked <- stacked %>% as_gt() %>% fmt_markdown(columns = TRUE) %>%
        table.font.size = px(12)) 
 stacked
 ```
-# 2. Meta-analysis
-## 2.1 Preliminaries
-### Load packages required
-We conducted meta-analysis using:
+# 3. Meta-analysis
 
-* "lme4" and related R packages for a generalised linear mixed model (GLMM) approach. 
-*  "meta4diag* and related packages for a Bayesian approach.
-
-Install and load the following packages
-
-```{r message=FALSE, warning=FALSE}
-library(mgcv) # For exploring non-linear relationships between covariates and outcomes using GAM.
-library(lme4) # for generalised linear mixed model (GLMM) regression analysis #
-library(effects) # To obtain and plot coefficients and residuals from GLM(M)
-library(performance) # Provides function to obtain ICC for GLMM
-library(msm) # enables calculation of DOR confidence intervals by delta-method #
-library(ggeffects) # provides easy conversion of coefficients to predicted probabilities
-library(partR2) # calculates semi-partial (part) R2 indicating % total variance explained by fixed effects of explanatory varaibles in a glmm.
-library(DHARMa) # For residual diagnostics on generalised linear models
-library(car) # For identifiying multi-colinearity by variable inflation factors (vif)
-library(metafor)
-library(dmetar)
-library(sjPlot)
-library(sjmisc)
-library(lmtest)# allows comparison of nested models
-library(meta4diag) # allows for Bayesian GLMM
-library(binom) # allows calculation of exact binomial and Bayesian confidence intervals
-library(LearnBayes) # For defining priors
-```
-
-### Prepare data for meta-analysis
+## 3.1 Prepare data for meta-analysis
 Reshape the 'metadata' tibble (created above) for bivariate binomial meta-analysis. The new tibble called 'Y' incorporates:
 
 * One line each for data needed for sensitivity (diseased and true positives) and specificity (not diseased and true negatives) within each test evaluation,
@@ -293,25 +298,27 @@ Reshape the 'metadata' tibble (created above) for bivariate binomial meta-analys
 
 ```{r message=FALSE, warning=FALSE}
 # convert metadata to dataframe for glmer compatibility
-ma <- as.data.frame(metadata)
-# redefine variables describing percentages (*weak_pos; positivity_rate; multipos*) as proportions and then transform by folded powers (sQRT(x)-SQRT(1-x))
-ma <- ma %>% mutate(weak_pos = weak_pos/100)
-ma <- ma %>% mutate(positivity_rate = positivity_rate/100)
-ma <- ma %>% mutate(multipos = multipos/100)
-ma <- ma %>% mutate(weak_posfold = weak_pos^1/2-(1-weak_pos)^1/2)
-ma <- ma %>% mutate(positivity_ratefold = positivity_rate^1/2-(1-positivity_rate)^1/2)
-ma <- ma %>% mutate(multiposfold = multipos^1/2-(1-multipos)^1/2)
-ma <- ma %>% mutate(targnum = if_else(num_target>1,1,0))
+ma2 <- as.data.frame(metadata)
+
+# transform covariates of proportions by folded square root (sQRT(x)-SQRT(1-x))
+ma2 <- ma2 %>% mutate(weak_posfold = weak_pos^(1/2)-(1-weak_pos)^(1/2))
+ma2 <- ma2 %>% mutate(positivity_ratefold = positivity_rate^(1/2)-(1-positivity_rate)^(1/2))
+ma2 <- ma2 %>% mutate(multiposfold = multipos^(1/2)-(1-multipos)^(1/2))
+
+
 # Create additional variables and reshape for bivariate analysis with dummy variables for sensitivity and specificity
-ma$n1 <- ma$t_p + ma$f_n # define number with disease
-ma$n0 <- ma$t_n + ma$f_p # define number without disease
-ma$true1 <- ma$t_p # define true positives
-ma$true0 <- ma$t_n # define true negatives
-ma$testeval <- 1:73 #give unique study id
-Y1 <- reshape(ma, direction="long", 
+ma2$n1 <- ma2$t_p + ma2$f_n # define number with disease
+ma2$n0 <- ma2$t_n + ma2$f_p # define number without disease
+ma2$true1 <- ma2$t_p # define true positives
+ma2$true0 <- ma2$t_n # define true negatives
+ma2$testeval <- 1:73 #give unique study id
+ma2 <- ma2 %>% slice_head(n=73)
+
+Y1 <- reshape(ma2, direction="long", 
                varying=list(c("n1","n0"), c("true1","true0")),
                timevar="sens",times=c(1,0),v.names=c("n","true"))
-Y1 <- Y1 %>% set_variable_labels(
+
+Y1 <- Y1 %>% var_labels(
   n = "Number by reference standard",
   true = "Number by index test")
 Y1 = Y1[order(Y1$study),]
@@ -332,6 +339,7 @@ Y1mp$naat <- dplyr::recode(Y1mp$naat, "Digital RT-PCR" = 2)
 Y1mp$naat <- dplyr::recode(Y1mp$naat, "TMA" = 3)
 y1mat <- Y1 %>% filter(pnaat=="Matrix")  # for matrix #
 y1com <- Y1 %>% filter(pnaat=="Combinatorial")  # for combinatorial #
+Y1mp <- Y1mp %>% mutate(outcome = true/n)
 # Univariate model datasets
 ysemp2 <- Y1se %>% filter(pnaat=="Minipool",pool_size_gp =="2") # minipool size 2
 ysemp4_7 <- Y1se %>% filter(pnaat=="Minipool",pool_size_gp =="4 to 7") # minipool size 4 to 7
@@ -339,25 +347,49 @@ ysemp8_15 <- Y1se %>% filter(pnaat=="Minipool",pool_size_gp =="8 to 15") # minip
 ysemp16_31 <- Y1se %>% filter(pnaat=="Minipool",pool_size_gp =="16 to 31") #minipool size 16 to 31
 y1semp <- Y1se %>% filter(pnaat=="Minipool")  # for minipool (all sizes) #
 y1semat <- Y1se %>% filter(pnaat=="Matrix")  # for matrix #
-y1secom <- Y1se %>% filter(pnaat=="Combinatorial")  # for combinatorial #
+y1secom <- Y1se %>% filter(pnaat=="Combinatorial")  # for combinatorial
+
+y1semp <- y1semp %>% var_labels(
+  naat = "NAAT type",
+  reg = "Regulatory approved test",
+  weak_posfold = "Positives with low viral load (fsr)",
+  multiposfold = "Pools with >1 positive sample (fsr)",
+  positivity_ratefold="Test positivity rate (fsr)",
+  log2p = "Log 2 pool size",
+  log2lod = "Log 2 limit of detection (copies/mL)",
+  modified_interpret = "Modified pool test cut-off",
+  modified_protocol = "Modified test protocol")
+y1semp <- y1semp %>% mutate (modified_protocol=as.factor(modified_protocol))
+y1semp<- y1semp %>% mutate(reg = as.factor(reg))
+y1semp<- y1semp %>% mutate(sensitivity = t_p/disease_p)
+
+
+# Grand-mean centre all continuous variables
+gmc2 <- function(x) {
+    xcenter = mean(x)
+    x - xcenter
+}
+
+y1semp <- y1semp %>% mutate(across(c(weak_posfold, positivity_ratefold, multiposfold, modified_interpret, log2lod, log2p, pool_size, weak_pos), ~gmc2(.x), "{.col}"))
+
+
 ```
 
-```{r message=FALSE, warning=FALSE}
-Y1mp <- Y1mp %>% mutate(multipos = scale(multipos, center = T, scale = F))
 
-```
+## 3.2 Summary estimates by pNAAT design
 
-## 2.2 Summary estimates by pNAAT design
-
-### 2.2.1 Initial asssessment of heterogeneity
+### 3.2.1 Initial asssessment of heterogeneity
 Use:
 
 #### Visual inspection of paired forest plots
-
+madad(x = NULL, TP, FN, FP, TN, level = 0.95, correction = 0.5, 
+  correction.control = "all", method = "wilson", yates = TRUE, 
+  suppress = TRUE, ...)
 #### Galbraith plot
 
 #### Influence diagnostics (removing (a) test evaluations (b) studies) using
 influence.merMod from the package lme4.
+
 #### Check if assumption of gaussian distribution to random effects holds using sjPlot
 
 Observations:
@@ -366,7 +398,7 @@ Observations:
 * No clear evidence of a threshold (cut-off) effect: Spearman correlation analysis between sensitivity and false positive rate is = -0.08 suggesting no clear evidence of a threshold (cut-off) effect.
 * 
 
-### 2.2.2 Combinatorial
+### 3.2.2 Combinatorial
 Only a single study was identified (Chakraborty 2020 [A-C]) which employed a combinatorial pooled test approach to a representative set of specimens. Three slight variants of the approach were assessed on three cohorts. 
 Since there was 0 FNs and only 1 FP across the three cohorts, bivariate binomial models would demonstrate singularity. It was therefore decided to sum TP,FP,TN, and FN across the cohorts and to estimate sensitivity and specificity using binomial exact method and Bayesian inference.
 
@@ -390,6 +422,7 @@ sens_ab
 spec_ab
 ```
 
+
 ##### Sensitivity
 ```{r message=FALSE, warning=FALSE}
 # Using user-defined values
@@ -402,6 +435,7 @@ print(ycombaysian_sens2)
 binom.bayes.densityplot(ycombaysian_sens2)
 ```
 
+
 ##### Specificity
 ```{r message=FALSE, warning=FALSE}
 ycombaysian_spec <- binom.bayes(1765,1766,prior.shape1 = spec_ab[1], prior.shape2 = spec_ab[2])
@@ -413,7 +447,7 @@ binom.bayes.densityplot(ycombaysian_spec2)
 ```
 
 
-### 2.2.3 Matrix
+### 3.2.3 Matrix
 Only a single study was identified (Ben-Ami 2020 [B]) which employed a matrix pooled test approach to a representative set of specimens.
 
 #### Estimate sens and spec (and 95% CIs) using the binomial exact method
@@ -457,7 +491,7 @@ print(ymatbaysian_spec2)
 binom.bayes.densityplot(ymatbaysian_spec2)
 ```
 
-### 2.2.4 Minipool
+### 3.2.4 Minipool
 The review identified 69 evaluations of minipool tests across 37 cohorts. Review of the paired forest plots indicates substantial between-study variance in sensitivity but specificity approached 1.00 in all studies (minimal between-study variance).
 Based on these observations use the glmer function in "lme4" to fit:
 
@@ -473,6 +507,8 @@ ymp_mod1 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens+spec|testeval
                     data = Y1mp,family=binomial,nAGQ=1,verbose=0)
 ymp_mod1_sum <- summary(ymp_mod1)
 ymp_mod1_sum
+ci <- confint(ymp_mod1)
+plogis(ci)
 ```
 Observations
 
@@ -488,6 +524,10 @@ ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval)+(0+
                     data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod2_sum <- summary(ymp_mod2)
 ymp_mod2_sum
+co <- ymp_mod2_sum$coeff[1:2,1]
+ci2 <- confint  (ymp_mod2)
+plogis(co)
+plogis(ci2)
 ```
 Observations:
 
@@ -498,10 +538,13 @@ Observations:
 
 #### Model 3: Bivariate binomial partial random effects model 
 ```{r message=FALSE, warning=FALSE}
-ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|cohort_id),
+ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval),
                     data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
 ymp_mod3_sum <- summary(ymp_mod3)
-ymp_mod3_sum
+co <- ymp_mod3_sum$coeff[1:2,1]
+ci3 <- confint  (ymp_mod3)
+plogis(co)
+plogis(ci3)
 ```
 Observations:
 
@@ -522,17 +565,18 @@ ysemp1 <- glmer (formula= cbind(true,n-true)~ 1+(1|cohort_id),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp1_sum <- summary(ysemp1)
 ysemp1_sum
-ysemp1icc <- icc(ysemp1,by_group=T,tolerance=1e-05)
-ysemp1icc
+co <- 
+ci <- confint  (ysemp1)
+plogis(co)
+plogis(ci)
 ```
+
 ##### study as level 2
 ```{r message=FALSE, warning=FALSE}
 ysemp2 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp2_sum <- summary(ysemp2)
 ysemp2_sum
-ysemp2icc <- icc(ysemp2,by_group=T,tolerance=1e-05)
-ysemp2icc
 ```
 
 ##### Nested (studies are nested within cohorts)
@@ -541,8 +585,6 @@ ysemp3 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval/cohort_id),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp3_sum <- summary(ysemp3)
 ysemp3_sum
-ysemp3icc <- icc(ysemp3,by_group=T,tolerance=1e-05)
-ysemp3icc
 ```
 ##### Compare models
 ```{r message=FALSE, warning=FALSE}
@@ -554,53 +596,9 @@ Observations
 * A generalised linear mixed model (glmm) with random-effects at the test-evaluation level captures between-study variation efficiently.
 * A 3-level model with random effects for test evaluations nested within cohorts is also suitable but may result in over-fitting.
 
+## 3.3 Sub-group analyses
 
-FUNCTION FOR OBTAINING PREDICTED SENS + SPEC and 95% CI ....LOOK FOR MORE EFFICIENT METHOD
-```{r message=FALSE, warning=FALSE}
-ggpredict(ymp_mod3, terms=c(sens,spec))
-```
-
-```{r message=FALSE, warning=FALSE}
-lsens <- ymp_mod3_sum$coeff[1,1]
-lspec <-ymp_mod3_sum$coeff[2,1]
-se.lsens <-ymp_mod3_sum$coeff[1,2]
-se.lspec <-ymp_mod3_sum$coeff[2,2]
-sensymp1 <- c(lsens,lsens-se.lsens-qnorm(0.975)*se.lsens,
-              lsens-se.lsens+qnorm(0.975)*se.lsens)
-specymp1 <- c(lspec,lspec-se.lspec-qnorm(0.975)*se.lspec,
-              lspec-se.lspec+qnorm(0.975)*se.lspec)
-logit_y_int = data.frame(estimate = c(lsens,lspec),
-                         lci = c(lsens-qnorm(0.975)*se.lsens,
-                                 lspec-qnorm(0.975)*se.lspec),
-                         uci = c(lsens+qnorm(0.975)*se.lsens,
-                                 lspec+qnorm(0.975)*se.lspec),
-                         row.names=c("lsens","lspec"))
-sensitivity_ymp1 <- plogis(sensymp1)
-specificity_ymp1 <- plogis(specymp1)
-sensitivity_ymp1
-specificity_ymp1
-
-lsens <- ysemp2_sum$coeff[1,1]
-se.lsens <-ysemp2_sum$coeff[1,2]
-sensymp1 <- c(lsens,lsens-se.lsens-qnorm(0.975)*se.lsens,
-              lsens-se.lsens+qnorm(0.975)*se.lsens)
-logit_y_int = data.frame(estimate = lsens,
-                         lci = lsens-qnorm(0.975)*se.lsens,
-                         uci = lsens+qnorm(0.975)*se.lsens)
-sensitivity_ymp1 <- plogis(sensymp1)
-sensitivity_ymp1
-```
-
-```{r message=FALSE, warning=FALSE}
-sensitivity_ymp1
-specificity_ymp1
-```
-
-
-
-## 2.3 Sub-group analyses
-
-### Pool size groups
+### 3.3.1 Pool size groups
 ```{r message=FALSE, warning=FALSE}
 ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
 (0+sens|testeval), data = ymp2,family=binomial,nAGQ=1,verbose=0) # fixed + random model
@@ -623,7 +621,16 @@ ymp_mod16_31_sum <- summary(ymp_mod16_31)
 ymp_mod16_31_sum
 ```
 
-## 2.4 Meta-regression exploring heterogeneity
+### 3.3.1 Symptom status and pool size group
+
+### 3.3.2 NAAT technology and pool size group
+
+### 3.3.3 Sample and pool size group
+
+### 3.3.4 Pooling method and pool size group
+
+
+## 3.4 Meta-regression exploring heterogeneity
 Meta-regressions were conducted for:
 
 (a) Sensitivity as outcome (univariate) and test evaluation as level 2 variable
@@ -644,7 +651,7 @@ Meta-regressions were conducted for:
 * After entering the first block, we removed covariates, starting with those non-significantly associated with sensitivity and highly colinear with other variables. We reviewed BIC and likelihood-ratio after removing variables to determine if the covariate could be removed without compromising model fit. This continued until only covariates that were significant (at a=0.05) and improved model fit (according to lrtest) were retained.
 * This process was applied for second and third rank blocks.
 
-### 2.4.1 Exploring relationships between continuous covariates and sensitivity
+### 3.4.1 Exploring relationships between continuous covariates and sensitivity
 Before meta-regression we examine nature of relationships between independent variables (continuous covariates) and outcomes (sensitivity, specificity):
 
 * Since we use a logit link in the binomial model we examine relationships between the inverse logit of covariates and sensitivity (i.e TP as proportion of all with disease (TP+FN)).
@@ -654,78 +661,84 @@ Before meta-regression we examine nature of relationships between independent va
 ```{r message=FALSE, warning=FALSE}
 y1semp<- y1semp %>% mutate(sensitivity = t_p/disease_p)
 y1sempexp<- y1semp %>% mutate(logit = log(sensitivity/(1-sensitivity)))
-y1semp_explore <- y1sempexp %>% dplyr::select(weak_posfold, multiposfold,
-                                              positivity_ratefold, log2p, 
-                                              log2lod,logit,sensitivity)
+y1semp_explore <- y1sempexp %>% dplyr::select(
+  weak_posfold, multiposfold,positivity_ratefold, log2p, log2lod,logit,sensitivity,mod, modified_interpret)
 predictors <- colnames(y1semp_explore)
-y1semp_explore2 <-y1semp_explore %>%
-  gather(key = "predictors", value = "predictor.value", -c(logit,sensitivity,
-                                                           weak_posfold,
-                                                           multiposfold,
-                                                           positivity_ratefold))
 
-plot1 <- ggplot(y1semp_explore2, aes(predictor.value, logit))+
+
+y1semp_explore1 <-y1semp_explore %>%
+  gather(key = "predictors", value = "predictor.value", 
+         -c(logit,sensitivity, weak_posfold, multiposfold, positivity_ratefold,
+            modified_interpret))
+
+plot1 <- ggplot(y1semp_explore1, aes(predictor.value, logit))+
   geom_point(size = 0.3, alpha = 0.5) +
   geom_smooth(method = "loess", size = 0.5) + 
   geom_smooth(method = "lm", color="darkred", linetype="dashed", size = 0.5, se=FALSE) + 
   facet_wrap(~predictors, scales = "free_x")+
-  labs(y = "Logit Sensitivity", x = "Log 2 of Limit of detection (lod) or Pool size (p)")
+  labs(y = "Logit Sensitivity", x = "Log 2 of Limit of detection (lod), Pool size (p), Modified cut-off+5",
+        title = "Associations between grand-mean centred continuous variables and sensitivity")
 
-# Bind the logit and tidying the data for plot
-y1semp_explore3 <-y1semp_explore %>%
-  gather(key = "predictors", value = "predictor.value", -c(logit,sensitivity,
-                                                           log2p, log2lod))
 
-plot2 <- ggplot(y1semp_explore3, aes(predictor.value, logit))+
+y1semp_explore2 <-y1semp_explore %>%
+  gather(key = "predictors", value = "predictor.value", 
+         -c(logit,sensitivity, log2p, log2lod,mod,modified_interpret))
+
+plot2 <- ggplot(y1semp_explore2, aes(predictor.value, logit))+
   geom_point(size = 0.3, alpha = 0.5) +
   geom_smooth(method = "loess", size = 0.5) + 
   geom_smooth(method = "lm", color="darkred", linetype="dashed", size = 0.5, se=FALSE) + 
   facet_wrap(~predictors, scales = "free_x")+
   labs(y = "Logit Sensitivity", x = "Folded root of x")
 
-ggarrange(plot1,plot2,ncol=1,nrow=2)
+
+ggarrange(plot1,plot2, ncol=1,nrow=2)
 ```
 Observations:
 
 *  Log2 of pool size (*log2p*) and the (folded root of) proportion of positives having low viral load (*weak_posfold*) were linearly and inversely associated with logit of sensitivity as anticipated.
 * Less clear associations were seen with log 2 of the assay limit of detection (*log2lod*), proportion of positive pools containing more than 1 positive (*multiposfold*), and all were adequately described by linear relationships after appropriate transformations.
 
-### 2.4.2 Exploring correlations between continuous covariates
+### 3.4.2 Exploring correlations between continuous covariates
 ```{r message=FALSE, warning=FALSE}
-select_explanatory <- c("log2p", "log2lod","weak_posfold","multiposfold","positivity_ratefold")
-y1sempexp %>% 
-  remove_labels() %>% 
-  ggpairs(columns = select_explanatory)
-
+y1sempexp2 <- as_tibble(y1sempexp)
+explanatory <-y1sempexp2 %>% dplyr::select(log2p,multiposfold,log2lod,weak_posfold, positivity_ratefold,mod)
+write_csv(explanatory, "exp.csv")
+cont <- read_csv("exp.csv")
+GGally::ggpairs(cont, columns=1:6)
 ```
 
 Observations:
 
-*  Correlations were generally weak except for:
+*  Correlations were generally weak except for relations between pool size (log2p) and test positivity rate (-0.583) or multiple positives per pool (+0.479).
+*  Simultaneous inclusion of these variables risks multi-colinearity
 
-* Inverse relation between pool size (log2p) and test positivity rate (-0.583)
-* Positive relation between pool size (log2p) and multiple positives per pool (+0.479)
+### 3.4.3 Homogeneity of variance between factor levels
+```{r message=FALSE, warning=FALSE}
 
-Simultaneous inclusion of these variables risks multi-colinearity
+leveneTest(residuals(ysemp2) ~ y1semp$naat)
+leveneTest(residuals(ysemp2) ~ y1semp$sample)
+leveneTest(residuals(ysemp2) ~ y1semp$modified_protocol)
+leveneTest(residuals(ysemp2) ~ y1semp$reg)
+```
 
-
-### 2.4.3 Models with Random effects at test evaluation level
+### 3.4.4 (a) Models with Random effects at test evaluation level
 
 #### Block 1 model
 ```{r message=FALSE, warning=FALSE}
 # Saturated Block 1 model 
-ysemp4 <- glmer (formula= cbind(true,n-true)~ 1+weak_pos+naat+symptoms+log2p+sample+pool_type+(1|testeval),
+ysemp4 <- glmer (formula= cbind(true,n-true)~ 1+weak_posfold+naat+symptoms+log2p+sample+pool_type+(1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp4_sum <- summary(ysemp4)
 
-ysemp5 <- glmer (formula= cbind(true,n-true)~ 1+weak_pos+naat+log2p+sample+(1|testeval),
+ysemp5 <- glmer (formula= cbind(true,n-true)~ 1+weak_posfold+naat+log2p+sample+(1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp5_sum <- summary(ysemp5)
-tab_model(ysemp4,ysemp5)
+ysemp5_sum
 ```
 #### Block 2 model
 ```{r message=FALSE, warning=FALSE}
@@ -752,100 +765,218 @@ modified protocol, modified interpretation, regulatory status,
    genes, storage of samples, reference standard same cut-off and assay.
 ```{r message=FALSE, warning=FALSE}
 # Saturated Block 3 model 
-ysemp9 <- glmer (formula= cbind(true,n-true)~1+weak_posfold+naat+log2p
-                 +sample+modified_protocol+modified_interpret+reg+targnum+targnum+storage+refst_same_cutoff+refstd_same_assay+
+ysemp8 <- glmer (formula= cbind(true,n-true)~1+weak_posfold+naat+log2p
+                 +sample+modified_protocol+modint+reg+storage+refst_same_cutoff+refstd_same_assay+
+                   (1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+ysemp8_sum <- summary(ysemp8)
+
+# FINAL BEST FIT MODEL
+ysemp9 <- glmer (formula= cbind(true,n-true)~1+naat+log2p
+                 +sample+modified_protocol+weak_posfold+modified_interpret+reg+
                    (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp9_sum <- summary(ysemp9)
+ysemp9_sum
 
-# FINAL BEST FIT MODEL
-ysemp10 <- glmer (formula= cbind(true,n-true)~1+naat+log2p
-                 +sample+modified_protocol+weak_pos+modified_interpret+reg+
-                   (1|testeval),
+```
+
+#### Diagnostics on final block 3 model
+```{r message=FALSE, warning=FALSE}
+# Obtain residuals
+simulationOutput <- simulateResiduals(ysemp9, plot = T)
+
+# Check for under/over dispersion
+testDispersion(simulationOutput)
+
+# Check of residuals against predictors
+testCategorical(simulationOutput, catPred = y1semp$reg)
+testCategorical(simulationOutput, catPred = y1semp$naat)
+testCategorical(simulationOutput, catPred = y1semp$modified_protocol)
+
+# Check for homogeneity of variance over range of continuous variables
+testQuantiles(simulationOutput, predictor=y1semp$weak_posfold, plot=T)
+testQuantiles(simulationOutput, predictor=y1semp$log2p, plot=T)
+testQuantiles(simulationOutput, predictor=y1semp$modified_interpret, plot=T)
+
+# Check for homogeneity of variance between categories of factors
+leveneTest(residuals(ysemp9) ~ y1semp$naat)
+leveneTest(residuals(ysemp9) ~ y1semp$sample)
+leveneTest(residuals(ysemp9) ~ y1semp$modified_protocol)
+leveneTest(residuals(ysemp9) ~ y1semp$reg)
+
+# Check for multi-colinearity by VIF
+car::vif(ysemp9) 
+```
+
+#### A model with basis splines for *weak_posfold* and *modified_interpret*
+```{r message=FALSE, warning=FALSE}
+ysemp10 <- glmer (formula= cbind(true,n-true)~1+naat+log2p+
+                 sample+modified_protocol+bs(weak_posfold)+
+                 bs(modified_interpret)+ reg+ (1|testeval),
                  data = y1semp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
 ysemp10_sum <- summary(ysemp10)
-ysemp10_table <- tab_model (ysemp2,ysemp5,ysemp7,ysemp10, show.p=FALSE)
-ysemp10_table
-plot_model(ysemp10,sort.est=T)
-
-# Diagnostics on final model
 ysemp10_sum
-simulationOutput <- simulateResiduals(ysemp10, plot = F)
-plot(simulationOutput)
-testDispersion(simulationOutput)
-car::vif(ysemp10) # Check for multi-colinearity by VIF
+lrtest(ysemp9,ysemp10)
+
+# Obtain residuals
+sim2 <- simulateResiduals(ysemp10, plot = T)
+
+# Check for under/over dispersion
+testDispersion(sim2)
+
+# Check of residuals against predictors
+testCategorical(sim2, catPred = y1semp$reg)
+testCategorical(sim2, catPred = y1semp$naat)
+testCategorical(sim2, catPred = y1semp$modified_protocol)
+
+# Check for homogeneity of variance over range of continuous variables
+testQuantiles(sim2, predictor=y1semp$weak_posfold, plot=T)
+testQuantiles(sim2, predictor=y1semp$log2p, plot=T)
+testQuantiles(sim2, predictor=y1semp$modified_interpret, plot=T)
+
+# Check for homogeneity of variance between categories of factors
+leveneTest(residuals(ysemp10) ~ y1semp$naat)
+leveneTest(residuals(ysemp10) ~ y1semp$sample)
+leveneTest(residuals(ysemp10) ~ y1semp$modified_protocol)
+leveneTest(residuals(ysemp10) ~ y1semp$reg)
+
+# Check for multi-colinearity by VIF
+car::vif(ysemp10) 
+
+plot_model(ysemp10, type = "eff", terms ="modified_interpret [all]")+ ylim (0,1)
+plot_model(ysemp10, type = "eff", terms ="weak_posfold [all]")+ ylim (0,1)
+
 ```
 
-### 2.4.4 Metaregression with random effects at cohort level
+Observations:
 
-#### Block 1 model
+* Diagnostics on the final metaregression model suggest adequate overall fit, but potential misspecification of the functional relationship between *weak_posfold* (folded root of proportion positives with low viral load) and sensitivity.
+* Fitting a model (*ysemp10*) with basis splines for *weak_posfold* and *modified_interpret* improved overall model fit (log-likelihood) but at expense of higher model complexity (BIC unchanged).
+* The basis splines may be overfitting given limited data across some parts of the range of *weak_posfold* and *modified_interpret*
+* To aid interpretability we have settled on *ysemp9* as the final metaregression.
+
+#### Summarising metaregression (a)
 ```{r message=FALSE, warning=FALSE}
-# Saturated Block 1 model 
-ysemp11 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+symptoms+log2p+sample+pool_type+(0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp11_sum <- summary(ysemp11)
-ysemp11_sum
-
-ysemp12 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+(0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp12_sum <- summary(ysemp12)
-ysemp12_sum
+#### Summarising metaregression (a) results
+ysemp9_table <- tab_model (ysemp2, ysemp7,ysemp9, 
+                           show.p=FALSE, collapse.ci = TRUE,  show.reflvl = TRUE,
+  pred.labels=c("Intercept","Weak positives (fsqroot)", "NAAT: digital PCR","NAAT: TMA", "log 2 of pool size","Sample type: saliva","Modified test protocol", "Modified pool test cut-off", "Regulatory approval: yes"),
+  dv.labels=c("(A) Intercept only","(B) Block 1 and 2","(C) Block 3"))
+ysemp9_table
 ```
-#### Block 2 model
+
 ```{r message=FALSE, warning=FALSE}
-# Saturated Block 2 model 
-ysemp13 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+multipos+quality+lod+positivity_rate+
-                   (0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp13_sum <- summary(ysemp13)
-ysemp13_sum
-
-ysemp14 <- glmer (formula= cbind(true,n-true)~ 0+sens+weak_pos+naat+log2p+
-                   (0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp14_sum <- summary(ysemp14)
-ysemp14_sum
+R2_9m <- partR2(ysemp9, data = y1semp, R2_type = "marginal", nboot = 10)
+R2_9m
+R2_9parts <- partR2(ysemp9, data = y1semp, partvars = c("reg", "naat","modified_interpret","modified_protocol","sample","log2p","weak_posfold"), R2_type= "marginal", nboot=10)
+summary(R2_9parts)
 ```
 
-#### Block 3 model
-modified protocol, modified interpretation, regulatory status,
-   number of targets, number of targets amplified for positive result, target
-   genes, storage of samples, reference standard same cut-off and assay.
+#### Plots summarising sources of heterogeneity
 ```{r message=FALSE, warning=FALSE}
-# Saturated Block 3 model 
-ysemp15 <- glmer (formula= cbind(true,n-true)~0+sens+weak_pos+naat+log2p
-                 +modified_protocol+modified_interpret+reg+num_target+targets_for_pos+storage+refst_same_cutoff+refstd_same_assay+
-                   (0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp15_sum <- summary(ysemp15)
-ysemp15_sum
+# "EFFECTS" PACKAGE EXAMPLES
 
-ysemp16 <- glmer (formula= cbind(true,n-true)~0+sens+naat+log2p+
-                 weak_pos+modified_interpret+reg+(0+sens|cohort_id),
-                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ysemp16_sum <- summary(ysemp16)
-ysemp16_sum
-simulation2 <- simulateResiduals(ysemp16, plot = T)
-testDispersion(simulation2)
+# Plot modified_intepret
+plot1 <- plot(predictorEffects(ysemp10,~ modified_interpret, residuals=TRUE),
+     main="Modifed pool test cut-off", 
+     axes = list(grid=TRUE,x=list(rug=TRUE, pool_size=list(lab ="Change in Cq cut-off(pool-standard)")), y=list(lab="Sensitivity", type="response",lim=c(0,1), ticks=list(at=c(0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0)))),
+      partial.residuals=list(smooth=FALSE))
+
+# Plot weak_posfold
+plot2 <-plot(predictorEffects(ysemp10,~ weak_posfold, residuals = TRUE),
+     main="Proportion of positives with low VL", 
+     axes = list(grid=TRUE,x=list(rug=TRUE, pool_size=list(lab ="Proportion low VL")), y=list(lab="Sensitivity", type="response",lim=c(0,1), ticks=list(at=c(0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0)))),
+     partial.residuals=list(smooth=FALSE))
+
+# Plot log2p (pool size)
+plot3 <- plot(predictorEffects(ysemp10,~log2p,residuals = TRUE), 
+     main="Pool size", 
+     axes = list(grid=TRUE,x=list(rug=TRUE, log2p=list(lab ="Pool size",
+      ticks=list(at=c(2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32)))), y=list(lab="Sensitivity", type="response",lim=c(0,1), ticks=list(at=c(0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0)))),
+     partial.residuals=list(smooth=FALSE))
+
 ```
 
-### 2.4.5 Metaregression with test evaluation random effects for sensitivity and fixed specificity
+
+
+```{r message=FALSE, warning=FALSE}
+# "sjPlot" PACKAGE EXAMPLES
+
+set_theme(base = theme_grey())
+# Plot of Odds Ratios and Beta-coefficients (standardised coefficients)
+por <- plot_model(ysemp9,sort.est=T, title = "Effects as Odds Ratios")
+pbeta <- plot_model(ysemp9,sort.est=T, type = "std", title = "Beta-coefficients")
+p <- ggplot(R2IR2, aes(x=reorder(term, estimate),y=estimate))
+p + geom_pointrange(aes(ymin = CI_lower, ymax = CI_upper)) + coord_flip()+ 
+    ggtitle("Inclusive R2") +
+  xlab("Covariate") + ylab("R2")
+por
+pbeta
+
+
+pool1 = function(x){
+  2^(x+2.85895883542674)
+}
+pool2 = function(x){
+   x<-ifelse(x<0, 0, x)
+   log(x,2) - 2.85895883542674
+ }
+
+isq<-function(x){
+  print(paste("isq",x))  #debug statement
+  x<-ifelse(x<0, 0, x)
+  sqrt(x)
+}
+
+plot_model(ysemp9, type="eff",terms=c("log2p","sample","naat"))+
+  ggtitle("Marginal effects by pool size, sample type and NAAT type") +
+  theme(legend.position="top")+
+  scale_y_continuous(name = "Sensitivity", breaks=seq(0,1.0,0.1), labels = scales::percent)+
+  scale_x_continuous(trans=scales::trans_new("sq", pool1, pool2))
+#### Look into trans_new from scales package
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+# "ggeffects" PACKAGE EXAMPLES
+theme_set(theme_ggeffects())
+sampletype <- ggeffect(ysemp9, terms = c("log2p", "sample", "naat","weak_posfold [meansd]"))
+sampletype <- sampletype %>% mutate(x = x+2.85895883542674)
+
+sampletype2 <- ggemmeans(ysemp9, terms = c("log2p", "sample", "naat"), type="re",
+                         condition=c(weak_posfold=-0.43408208))
+sampletype2 <- sampletype2 %>% mutate(x = x+2.85895883542674)
+
+ggplot(sampletype2, aes(x = x, y = predicted, group = group, colour = group, 
+                       fill=group)) + 
+  geom_line()+
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, fill=group), linetype=0, alpha = .2) +
+facet_wrap(~facet) +
+  scale_x_continuous("Pool size", breaks=c(0,1,2,3,4,5), labels=function(x){2^x})+
+  scale_y_continuous("Sensitivity", breaks=seq(0,1,0.1))+
+  theme(legend.position="top")+
+  theme(panel.grid.minor = element_blank())+
+  labs(title="Marginal effects by NAAT type, sample type, and pool size",
+  fill= "Sample type", colour = "Sample type")
+
+plot(sampletype2, facet = TRUE)+
+  labs(title="Marginal effects by NAAT type, sample type, and pool size",
+  colour="Sample type", fill="Sample type")+
+  scale_x_continuous("Pool size", breaks=c(0,1,2,3,4,5), labels=function(x){2^x})+
+  scale_y_continuous("Sensitivity", breaks=seq(0,1,0.1))+
+  theme(legend.position="top")+
+  theme(panel.grid.minor = element_blank())
+```    
+     
+### 3.4.5 (b) Metaregression with test evaluation random effects for sensitivity and fixed specificity
 ```{r message=FALSE, warning=FALSE}
 Y1mp <- Y1mp %>% mutate(selog2p = log2p*sens)
 Y1mp <- Y1mp %>% mutate(splog2p = log2p*spec)
@@ -878,15 +1009,10 @@ ypartmp17_sum
 ypartmp17_residuals <-simulateResiduals(ypartmp17, plot = T)
 testDispersion(ypartmp17_residuals)
 ```
-
-### 2.4.6 Metaregression with cohort random effects for sensitivity and fixed specificity
 ```{r message=FALSE, warning=FALSE}
-ypartmp18 <- glmer (formula= cbind(true,n-true)~0+spec+sens+selog2p+seweak_pos+facnaat+semodified_interpret+sereg+(0+sens|cohort_id),
-                 data = Y1mp,family=binomial, nAGQ=1,verbose=0,
-                 control=glmerControl(optimizer="bobyqa",optCtrl=list
-                                      (maxfun=2e5)))
-ypartmp18_sum <- summary(ypartmp18)
-ypartmp18_sum
-ypartmp18_residuals <-simulateResiduals(ypartmp18, plot = T)
-testDispersion(ypartmp18_residuals)
+ysemp9a <- glmer(sensitivity~1+log2p*weak_posfold+(1|testeval),
+                 weights=n, data=y1semp,family="binomial")
+ysemp9a_sum <- summary(ysemp9a)
+ysemp9a_sum
+ggpredict(ysemp9a)
 ```
