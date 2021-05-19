@@ -69,7 +69,7 @@ library(gridExtra) # Combining plots generated in base R
 library(lattice) # For Q-Q plots
 library(tidyverse) # to enable 'tidy' collection of packages, including dplyr, ggplot2, purrr, forcats, readr
 library(splines)
-library(RVAideMemoire) # For Spearman's rank with boostrap 95% CI
+library(sjstats) # For Spearman's rank with boostrap 95% CI
 ```
 
 ## 1.3 Read in data and label
@@ -433,9 +433,9 @@ We used the *madad* function of the *mada* package to test for heterogeneity in 
 ```{r message=FALSE, warning=FALSE}
 
 # Use 'madad' function 
-confmatrix <- metadata %>% dplyr::select(test_eval_id,t_p,f_n,f_p,t_n)
+confmatrix <- metadata %>% dplyr::select(test_eval_id,t_p,f_n,f_p,t_n, pool_size_gp, pool_size, pnaat, naat, sample, pool_type)
 confmatrix <- confmatrix %>% rename(c(Study = test_eval_id, TP=t_p, FN=f_n, FP=f_p, TN=t_n))
-hg<- madad(confmatrix)
+hg <- madad(confmatrix)
 heterogeneity_test_sensitivity <- c(hg[[c(4,1)]],hg[[c(4,2)]],hg[[c(4,3)]])
 heterogeneity_test_specificity <- c(hg[[c(5,1)]],hg[[c(5,2)]],hg[[c(5,3)]])
 hgall <- rbind(heterogeneity_test_sensitivity,heterogeneity_test_specificity)
@@ -451,33 +451,11 @@ gt_hgall <- gt(data = hgall2)
 gt_hgall %>% tab_header(title = "Test for equality of sensitivities and specificities")
 ```
 
-### 3.1.3 Check for threshold effects
+## 3.2 Check for threshold effects
+We investigated a threshold effect: i.e, a trade-off of sensitivity and specificity as positivity threshold is varied.
 
-#### Correlation of Sensitivity and FPR
-We investigated a threshold effect (i.e a trade-off of sensitivity and specificity as positivity threshold is varied) using the *spearman.ci* function of the *RVAideMemoire* package. This provides a summary estimate of the correlation between sensitivity and false-positive rate (1-specificity), and boostrapped 95% CI. We set boostrapping to 500 replications.
-
-```{r message=FALSE, warning=FALSE}
-
-# Collate sensitivity and FPR predictions from 
-corrfprse <- metadata %>% dplyr::select(f_p,t_p,f_n, t_n, disease_p, disease_n, totalsamples)
-corrfprse <- corrfprse %>% mutate(fpr=f_p/disease_n)
-corrfprse <- corrfprse %>% mutate(point=t_p/disease_p)
-corrfprse <- tibble::rowid_to_column(corrfprse, "ID")
-corrfprse$ID <- as.character(corrfprse$ID)
-corrfprse <- corrfprse %>% mutate(ID = fct_reorder(ID, desc(n)))
-
-# Get Spearman's Rank correlation and covariance
-sprank<- spearman.ci(corrfprse$fpr, corrfprse$point, nrep = 500, conf.level = 0.95)
-values <- c(sprank[[(5)]],sprank[[(6)]])
-parameter<- c("rho","lower CI","upper CI")
-cor <- cbind(parameter,values)
-cor <- as.tibble(cor)
-gt_cor <-gt(cor)
-gt_cor %>% tab_header(title = "Correlation of sensitivity and FPR")
-```
-
-#### Descriptive plots
-Descriptive plots of observed and estimated sensitivity and 1-specificity (FPR) in ROC space confirm the lack of association, given specificity is ~100% in all studies. While the pool-test stage of a pooling method can result in 'FP' pools, subsequent re-testing of samples within these pools, or analoguous algorithmic deconvoluting, largely excludes FP individual sample results.
+### 3.2.1 Descriptive plots
+Descriptive plots of observed and estimated sensitivity and 1-specificity (FPR) in ROC space show an apparent lack of association, given specificity is ~100% in all studies. While the pool-test stage of a pooling method can result in 'FP' pools, subsequent re-testing of samples within these pools, or analoguous algorithmic deconvoluting, largely excludes FP individual sample results.
 
 ```{r message=FALSE, warning=FALSE}
 # Descriptive plots
@@ -498,143 +476,66 @@ p2cor <- plotdata(confmatrix2, two.by.two=TRUE, alpha.p=0.1, max.size=15)+
 
 ggarrange(p1cor, p2cor, ncol=2)
 ```
+### 3.2.2 Correlation of Sensitivity and FPR
+We used the *crosstable_statistics* function of the *sjtools* package to derive a Spearman's rank  correlation of sensitivity and FPR, weighted by overall number tested (n).
 
-#### Reitsma et al approach to fitting summary point and 95% CI
-We used the bivariate linear mixed model of Reitsma et al to obtain a
 ```{r message=FALSE, warning=FALSE}
-confmatrix <- confmatrix %>% filter(!Study %in% 
-   c('Ben-Ami 2020 [B]', 	'Chakravarthy 2020 [A]', 	'Chakravarthy 2020 [B]', 'Chakravarthy 2020 [C]'))
-confmatrix <- confmatrix %>% mutate(fpr = FP/(FP+TN))
-confmatrix <- confmatrix %>% mutate(sens = TP/(TP+FN))
-reitsma <- reitsma(confmatrix)
-plot (reitsma, xlim = c(0,0.1), ylim = c(0,1))
-points(fpr(confmatrix), sens(confmatrix), xlim = c(0,0.02), ylim = c(0,1), pch = 3, Add=TRUE)
-
+cts<- crosstable_statistics(data=corrfprse, x1=fpr, x2=point, statistics="spearman", weights= corrfprse$totalsamples)
+cts2 <- c(cts$estimate, cts$p.value)
+z = -0.862 + sqrt (0.743-(2.404*log(cts$p.value)))
+int = 1.96*(cts$estimate/z)
+lci = cts$estimate + int
+uci = cts$estimate - int
+cts2 <- c(cts$estimate, lci ,uci, cts$p.value)
+param <- c("rho","lci","uci","p" )
+cts3 <- cbind(param,cts2)
+as.tibble(cts3)
 ```
-
-#### Bayesian approach to fitting summary point and 95% CI
-We used the *metadiag* function from the *bamdit* package to take a Bayesian approach to fitting a summary point and
+### 3.2.3 Reitsma approach for summary point in ROC space
+We used the *reitsma* function from the *mada* package to attempt to fit a summary point and predictive interval in ROC space for minipool pNAAT design only.
 ```{r message=FALSE, warning=FALSE}
-# Filter to obtain only minipool studies
 confmatrix2 <- confmatrix %>% mutate(n1 = TP+FN)
 confmatrix2 <- confmatrix2 %>% mutate(n2 = FP+TN)
 confmatrix2 <- confmatrix2 %>% mutate(Study =as.character(Study))
-write_csv (confmatrix2, "matrix.csv")
 
-result <- metadiag(confmatrix2, two.by.two=TRUE, re = "normal", re.model = "DS", link = "logit", sd.Fisher.rho = 1.7, nr.burnin = 1000, nr.iterations = 10000, nr.chains = 4, r2jags = TRUE)
+reit<- reitsma(confmatrix2,TP="TP", FN="FN", FP="FP", TN="TN",alphasens = 1, alphafpr = 1,correction = 0.5, correction.control = "all",method = "reml")
+plot(reit, extrapolate = FALSE, plotsumm = TRUE, level = 0.95, 
+     ylim = c(0,1), xlim = c(0,0.01), pch = 1, sroclty = 1, sroclwd = 1, 
+     predict = TRUE, predlty = 3, predlwd = 1)
+summary(reit)
+```
 
-plot(result, level = 0.95, parametric.smooth = TRUE)
+### 3.2.4 Bayesian approach for summary point in ROC space
+We used the *metadiag* function from the *bamdit* package to take a Bayesian approach to fitting a summary point and posterior predictive intervals in ROC space for minipool pNAAT design only.
+```{r message=FALSE, warning=FALSE}
+# Filter to obtain only minipool studies
 
+
+result <- metadiag(confmatrix2, two.by.two=TRUE, re = "normal", re.model = "DS", link = "logit", sd.Fisher.rho = 1.7, nr.burnin = 1000, nr.iterations = 5000, nr.chains = 4, r2jags = TRUE)
+plot(result, level = c(0.5,0.75, 0.95), parametric.smooth = TRUE, limits.x = c(0,0.01))
 plotsesp(result)
 ```
 
+## 3.3 Data structure for random effects
+We sought to resolve two issues before proceeding to summary effects:
 
-# 4. Summary estimates of test accuracy
+1) *Is a bivariate random-effects model most suitable?* Review of the paired forest plots indicates substantial between-study variance in sensitivity but specificity approached 1.00 in all studies. As such a bivariate random-effects model may not converge or produce singular fits.
+In add
+2) *Should random-effects be explored with 2 or 3 levels?* The review identified test-evaluations within cohorts, within studies. Pragmatically we considered cohorts as the highest level of clustering. However, we considered whether test-evaluation alone (2-level) or test-evaluation nested within cohort (3-level) should be used,
 
-## 4.1 Summary by pNAAT design
+To explore these options we used the glmer function in "lme4" to fit integer only models to the largest planned synthesis (all minipools combined, n = 69 test evaluations, n =37 cohorts)
 
-### 4.1.1 Combinatorial
-Only a single study was identified (Chakraborty 2020 [A-C]) which employed a combinatorial pooled test approach to a representative set of specimens. Three slight variants of the approach were assessed on three cohorts. 
-Since there was 0 FNs and only 1 FP across the three cohorts, bivariate binomial models would demonstrate singularity. It was therefore decided to sum TP,FP,TN, and FN across the cohorts and to estimate sensitivity and specificity using binomial exact method and Bayesian inference.
-
-#### Estimate sens and spec (and 95% CIs) using the binomial exact method
-```{r message=FALSE, warning=FALSE}
-
-ycomsens <-c(binom.test(25,25)$estimate, binom.test(25,25)$conf.int)
-ycomspec <-c(binom.test(1765,1766)$estimate, binom.test(1765,1766)$conf.int)
-ycomsens
-ycomspec
-```
-
-#### Estimate sens and spec (and 95% CIs) using Bayesian inference
-To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
-User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
-
-```{r message=FALSE, warning=FALSE}
-
-sens_ab <- beta.select(list(x = 0.90, p = 0.5), list(x = 0.98, p = 0.9))
-spec_ab <- beta.select(list(x = 0.97, p = 0.5), list(x = 0.999, p = 0.9))
-
-# Sensitivity Using user-defined values
-ycombaysian_sens <- binom.bayes(25,25,prior.shape1 = sens_ab[1], prior.shape2 = sens_ab[2])
-print(ycombaysian_sens)
-binom.bayes.densityplot(ycombaysian_sens)
-
-# Sensitivity Using  defaults
-ycombaysian_sens2 <- binom.bayes(25,25,prior.shape1 = 0.5, prior.shape2 =0.5)
-print(ycombaysian_sens2)
-binom.bayes.densityplot(ycombaysian_sens2)
-
-# Specificity using user-defined
-ycombaysian_spec <- binom.bayes(1765,1766,prior.shape1 = spec_ab[1], prior.shape2 = spec_ab[2])
-print(ycombaysian_spec)
-binom.bayes.densityplot(ycombaysian_spec)
-
-# Specificity using defaults
-ycombaysian_spec2 <- binom.bayes(1765,1766,prior.shape1 = 0.5, prior.shape2 =0.5)
-print(ycombaysian_spec2)
-binom.bayes.densityplot(ycombaysian_spec2)
-```
-
-
-### 4.1.2 Matrix
-Only a single study was identified (Ben-Ami 2020 [B]) which employed a matrix pooled test approach to a representative set of specimens.
-
-#### Estimate sens and spec (and 95% CIs) using the binomial exact method
-```{r message=FALSE, warning=FALSE}
-
-ymatsens <-c(binom.test(3,3)$estimate, binom.test(3,3)$conf.int)
-ymatspec <-c(binom.test(72,72)$estimate, binom.test(72,72)$conf.int)
-ymatsens
-ymatspec
-```
-
-#### Estimate sens and spec (and 95% CIs) using Bayesian method
-To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
-User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
-
-```{r message=FALSE, warning=FALSE}
-
-sens_ab <- beta.select(list(x = 0.90, p = 0.5), list(x = 0.98, p = 0.9))
-spec_ab <- beta.select(list(x = 0.97, p = 0.5), list(x = 0.999, p = 0.9))
-
-# Sensitivity by user-defined values
-ymatbaysian_sens <- binom.bayes(3,3,prior.shape1 = sens_ab[1], prior.shape2 = sens_ab[2])
-print(ymatbaysian_sens)
-binom.bayes.densityplot(ymatbaysian_sens)
-
-# Sensitivity by default values
-ymatbaysian_sens2 <- binom.bayes(3,3,prior.shape1 = 0.5, prior.shape2 =0.5)
-print(ymatbaysian_sens2)
-binom.bayes.densityplot(ymatbaysian_sens2)
-
-# Specificity by user-defined values
-ymatbaysian_spec <- binom.bayes(72,72,prior.shape1 = spec_ab[1], prior.shape2 = spec_ab[2])
-print(ymatbaysian_spec)
-binom.bayes.densityplot(ymatbaysian_spec)
-
-# Specificity by default values
-ymatbaysian_spec2 <- binom.bayes(72,72,prior.shape1 = 0.5, prior.shape2 =0.5)
-print(ymatbaysian_spec2)
-binom.bayes.densityplot(ymatbaysian_spec2)
-```
-
-### 4.1.3 Minipool
-
-#### Examine data structure
-The review identified 69 evaluations of minipool tests across 37 cohorts. Review of the paired forest plots indicates substantial between-study variance in sensitivity but specificity approached 1.00 in all studies (minimal between-study variance).
-
-Based on these observations we used the glmer function in "lme4" to fit:
-
-* Model 1: A bivariate binomial random-effects model with an unstructured covariance matrix: random-effects considered for both sensitivity and specificity with unknown correlation (This was fit to confirm random-effects for specificity were not required)
+* Model 1: A bivariate binomial random-effects model with an unstructured covariance matrix: random-effects considered for both sensitivity and specificity with unknown correlation (to confirm random-effects for specificity were not required)
 * Model 2: A bivariate binomial random-effects model with zero covariance matrix: random-effects considered for both sensitivity and specificity but with no correlation between 
 * Model 3: A bivariate binomial partial random-effects model: random-effects are considered for sensitivity but not for susceptibility.
-* Model 4: univariate binomial random-effects model: looking only at sensitivity.
+* Model 4: univariate binomial random-effects model (sensitivity only)
+4a) 3-level model with test-evaluations nested within cohorts
+4b) 2-level model with test-evaluations as highest clustering.
 
-#### model 1 bivariate binomial random-effects with unstructured covariance matrix
-Use glmer to fit an integer only bivariate binomial multi-level (random-effects) meta-analysis with an unstructured covariance matrix. We observe
+### 3.3.1 model 1 bivariate binomial random-effects with unstructured covariance matrix
+Use glmer to fit an integer only bivariate binomial mixed (random-effects) meta-analysis with an unstructured covariance matrix. We observe
 * Confirms substantial between-studies variance among mini-pool designs
-* Correlation of fixed effects is low (~0.15).
+* Correlation of fixed effects is confirmed to be low (~0.15).
 * Covariance in random effects = 1 suggesting over-fitting and need to reduce model complexity
 * Overall suggests a similar model with either a zero correlation covariance matrix (model 2 below) or considering no random-effects in specificity (model 3 below) more appropriate.
 
@@ -644,11 +545,13 @@ ymp_mod1 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens+spec|testeval
                     data = Y1mp,family=binomial,nAGQ=1,verbose=0)
 ymp_mod1_sum <- summary(ymp_mod1)
 ymp_mod1_sum
-co1 <- ymp_mod1_sum$coeff[1:2,1]
+co1 <- ymp_mod1_sum$coeff[1,1]
+ci1 <- confint(ymp_mod1, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
 plogis(co1)
+plogis(ci1)
 ```
 
-#### model 2 bivariate binomial random-effects with zero covariance matrix
+### 3.3.2 model 2 bivariate binomial random-effects with zero covariance matrix
 Use glmer to fit an integer only bivariate binomial multi-level (random-effects) meta-analysis with a zero covariance matrix. We observe:
 
 * The estimates for sensitivity (0.941) and specificity (~1.00) are similar to model 1.
@@ -657,73 +560,150 @@ Use glmer to fit an integer only bivariate binomial multi-level (random-effects)
 
 ```{r message=FALSE, warning=FALSE}
 
-ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval)+(0+spec|testeval),
-                    data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
+ymp_mod2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval), Y1mp, family=binomial,nAGQ=1,verbose=0) 
 ymp_mod2_sum <- summary(ymp_mod2)
 ymp_mod2_sum
-co2 <- ymp_mod2_sum$coeff[1:2,1]
+co2 <- ymp_mod2_sum$coeff[1,1]
+ci2 <- confint(ymp_mod2, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
 plogis(co2)
+plogis(ci2)
 ```
 
 
-#### Model 3: Bivariate binomial partial random effects model 
-```{r message=FALSE, warning=FALSE}
 
-ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval),
-                    data = Y1mp,family=binomial,nAGQ=1,verbose=0) # fixed + random model
-ymp_mod3_sum <- summary(ymp_mod3)
-co3 <- ymp_mod3_sum$coeff[1:2,1]
-ci3 <- confint  (ymp_mod3)
-plogis(co3)
-plogis(ci3)
-```
+### 3.3.3 Model 3: Bivariate binomial partial random effects model
 Observations:
 
-* Estimated sensitivity (0.941) and specificity (~1.00) are similar to model 1.
+* Estimated sensitivity and specificity are as in model 1.
 * The between-studies variance for sensitivity is ~ the same in model 2.
 * BIC is slightly better than model 1 and 2 suggesting a more parsimonious model
 * Confirms a model with no random-effects in specificity appropriate. 
 * Since specificity approaches unity in all studies and cohorts, a univariate model focused on sensitivity (model 4 below) may be more appropriate.
-
-#### model 4 Sensitivity only model
-Use glmer to fit an integer only univariate (outcome  is sensitivity only) binomial multi-level (random-effects) meta-analysis
-
-##### study as level 2
 ```{r message=FALSE, warning=FALSE}
 
+ymp_mod3 <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval),
+                    data = Y1mp,family=binomial,nAGQ=1,verbose=0)
+ymp_mod3_sum <- summary(ymp_mod3)
+ymp_mod3_sum
+co3 <- ymp_mod3_sum$coeff[1,1]
+ci3 <- confint(ymp_mod3, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
+plogis(co3)
+plogis(ci3)
+```
+
+
+### 3.3.4 model 4 Sensitivity only model
+Use glmer to fit an integer only univariate (outcome  is sensitivity only) binomial multi-level (random-effects) meta-analysis
+Observations
+
+* Depending on method used for ICC calculation, around 35-55% of total variation in sensitivity occurs between test-evaluations.
+* A univariate random-effects (glmm) model with test-evaluation at level 2 captures between-study variation efficiently.
+* A univariate random-effects (glmm) model with test-evaluation (level 2) nested within study cohorts (level 3) is also suitable but is likely to result in over-fitting.
+
+#### model 4a study as level 2
+```{r message=FALSE, warning=FALSE}
+set.seed(99)
 ysemp2 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp2_sum <- summary(ysemp2)
 ysemp2_sum
-co4b <- ysemp2_sum$coeff[1,1]
-ci4b <- confint  (ysemp1)
-plogis(co4b)
-plogis(ci4b)
+co4a <- ysemp2_sum$coeff[1,1]
+ci4a <- confint(ysemp2, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
+plogis(co4a)
+plogis(ci4a)
 ```
 
-##### Nested (studies nested within cohorts)
+#### Model 4b Nested (studies nested within cohorts)
 ```{r message=FALSE, warning=FALSE}
 
 ysemp3 <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval/cohort_id),
                     data = y1semp,family=binomial, nAGQ=1,verbose=0) 
 ysemp3_sum <- summary(ysemp3)
 ysemp3_sum
-co4c <- ysemp1_sum$coeff[1,1]
-ci4c <- confint  (ysemp1)
-plogis(co4c)
-plogis(ci4c)
+co3c <- ysemp3_sum$coeff[1,1]
+ci3c <- confint(ysemp3, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
+plogis(co3c)
+plogis(ci3c)
 ```
-##### Compare sensitivity only models
+
+### 3.3.5 Summarising results for minipool
+Overall we suggest the following pre-planned schedule for model fits starting at stage 1 and progressing (stage 1 to 4 in order) if overfitting, non-convergence or other model-fit issues
+1st stage: Bivariate binomial partial random-effects model
+2nd stage: Univariate binomial random-effects model (glmm in lme4)
+3rd stage: Univariate binomial fixed-effects model (glm in lme4)
+4th stage: Collate confusion matrix numbers and perform binomial.test with binomial exact and/or Bayesian confidence intervals.
+```{r message=FALSE, warning=FALSE}
+#### Summarising results
+mptable <- tab_model (ymp_mod2, ymp_mod3, ysemp2, ysemp3, transform=NULL,
+                           show.p=FALSE, collapse.ci = TRUE,  show.reflvl = TRUE, show.icc = FALSE, show.obs = FALSE, show.r2 = FALSE, show.loglik = TRUE, show.aic = TRUE, pred.labels=c("Intercept","Weak positives (fsqroot)", "NAAT: digital PCR","NAAT: TMA", "log 2 of pool size","Sample type: saliva","Modified test protocol", "Modified pool test cut-off", "Regulatory approval: yes"),
+  dv.labels=c("Bivariate, zero covariance","Bivariate, partial random RE" ,"Univariate 2-level", "Univariate 3-level"))
+
+mptable
+
+```
+
+
+
+# 4. Summary estimates of test accuracy
+
+## 4.1 Summary by pNAAT design
+
+### 4.1.1 Combinatorial
+Only a single study was identified (Chakraborty 2020 [A-C]) which employed a combinatorial pooled test approach to a representative set of specimens. Three slight variants of the approach were assessed on three cohorts. Since there were 0 FNs and only 1 FP across the three cohorts we decided to sum TP,FP,TN, and FN across the cohorts and to estimate sensitivity and specificity using binomial exact method (and later Bayesian inference - see section 8).
+
+#### Estimate sens and spec (and 95% CIs) using the binomial exact method
 ```{r message=FALSE, warning=FALSE}
 
-lrtest(ysemp3,ysemp2)
+ycomsens <-c(binom.test(25,25)$estimate, binom.test(25,25)$conf.int)
+ycomspec <-c(binom.test(1765,1766)$estimate, binom.test(1765,1766)$conf.int)
+cosum <- rbind(ycomsens,ycomspec)
+rowlab <- c("Sensitivity","specificity")
+comb_summary <-cbind(rowlab,cosum)
+comb<- as.tibble(comb_summary)
+comb<- comb %>% rename(Parameter = rowlab, estimate ="probability of success", "lower 95% CI"=V3, "upper 95% CI"=V4)
+comb$estimate = as.numeric (comb$estimate)
+comb$`lower 95% CI` = as.numeric (comb$`lower 95% CI`)
+comb$`upper 95% CI` = as.numeric (comb$`upper 95% CI`)
+combgt <- gt(comb)
+combgt2 <- combgt %>% fmt_number(columns = c(estimate, "lower 95% CI", "upper 95% CI"),decimals = 3)
+combgt2
 ```
-Observations
 
-* 55% to 67% of total variation in sensitivity occurs between cohorts or test-evaluations (h)
-* A generalised linear mixed model (glmm) with random-effects at the test-evaluation level captures between-study variation efficiently.
-* A 3-level model with random effects for test evaluations nested within cohorts is also suitable but may result in over-fitting.
+### 4.1.2 Matrix
+Only a single study was identified (Ben-Ami 2020 [B]) which employed a matrix pooled test approach to a representative set of specimens.
 
+#### Estimate sens and spec (and 95% CIs) using the binomial exact method
+```{r message=FALSE, warning=FALSE}
+
+ymatsens <-c(binom.test(3,3)$estimate, binom.test(3,3)$conf.int)
+ymatspec <-c(binom.test(72,72)$estimate, binom.test(72,72)$conf.int)
+matsum <- rbind(ymatsens,ymatspec)
+matsummary <-cbind(rowlab,matsum)
+mat<- as.tibble(matsummary)
+mat<- mat %>% rename(Parameter = rowlab, estimate ="probability of success", "lower 95% CI"=V3, "upper 95% CI"=V4)
+mat$estimate = as.numeric (mat$estimate)
+mat$`lower 95% CI` = as.numeric (mat$`lower 95% CI`)
+mat$`upper 95% CI` = as.numeric (mat$`upper 95% CI`)
+matgt <- gt(mat)
+matgt2 <- matgt %>% fmt_number(columns = c(estimate, "lower 95% CI", "upper 95% CI"),decimals = 3)
+matgt2
+```
+
+
+### 4.1.3 Minipool
+The review identified 69 evaluations of minipool tests across 37 cohorts. 
+A bivariate binomial partial random-effects model (converged considering only random-effects in sensitivity)
+```{r message=FALSE, warning=FALSE}
+set.seed(111)
+ymp_modfinal <- glmer (formula= cbind(true,n-true)~0+sens+spec+(0+sens|testeval),
+                    data = Y1mp,family=binomial,nAGQ=1,verbose=0)
+ymp_modfinal_sum <- summary(ymp_modfinal)
+ymp_modfinal_sum
+co3 <- ymp_modfinal_sum$coeff[1,1]
+ci3 <- confint(ymp_modfinal, level = 0.95,method = "boot",boot.type = "perc", nsim=200)
+plogis(co3)
+plogis(ci3)
+```
 
 # 5 Sub-group analyses
 We summarise test accuracy for the following sub-groups of minipool pNAAT:
@@ -735,43 +715,167 @@ We summarise test accuracy for the following sub-groups of minipool pNAAT:
 * 5.5 Pooling method and Pool size groups
 
 ## 5.1 Pool size groups
+
+### 5.1.2 Minipool of size 2 
+Only 3 test-evaluations (from 2 studies) looked at minipool sizes of 2.
+stage 1: A partial random effects model (mp2a) was singular.
+stage 2: Univariate random effects model (mp2b) was singular
+stage 3: Univariate fixed effects model (mp2c) for sensitivity
+Stage 4: Binomial test with binomial exact 95% CI fit for specificity
+
+#### Stage 1 model
 ```{r message=FALSE, warning=FALSE}
 ymp2 <- Y1mp %>% filter(pool_size_gp=="2")
-ypool2 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|testeval)+(0+spec|testeval), data = ymp2,family=binomial,nAGQ=1,verbose=0) # fixed + random model
-ypool2_sum <- summary(ypool2)
-ypool2_sum
-# Obtain sensitivity and 95% CI using simulation and boostrap options
-feEx <- FEsim(ypool2, 1000) #Obtain fixed effects through simulation
-cbind(feEx[,1] , round(feEx[, 2:4], 3))
+ymp2se <- y1semp %>% filter(pool_size_gp=="2")
+mp2a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymp2,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp2a_sum <- summary(mp2a)
+mp2a_sum
+isSingular(mp2a)
+```
 
-# Obtain specficity and 95% CI using binom.test as no model convergence with bivariate approach
-yp2sens <-c(binom.test(251,264)$estimate, binom.test(251,264)$conf.int)
+#### Stage 2 model (sensitivity only)
+```{r message=FALSE, warning=FALSE}
+mp2b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ysemp2, family=binomial,nAGQ=1,verbose=0) # fixed + random model
+mp2b_sum <- summary(mp2b)
+mp2b_sum
+isSingular(mp2b)
+```
+
+```{r message=FALSE, warning=FALSE}
+
+mp2c <- glm (formula= cbind(true,n-true)~ 1, data = ysemp2, family=binomial) # fixed + random model
+mp2c_sum <- summary(mp2c)
+mp2c_sum
+set.seed (212)
+mp2c_ci <- confint (mp2c, level=0.99, method="boot", quiet=TRUE)
+est2 <- plogis (mp2c_sum$coefficients [1,1])
+ci2 <- plogis(mp2c_ci)
+summp2 <- c(est2,ci2)
+as.tibble(summp2)
+```
+
+```{r message=FALSE, warning=FALSE}
+#### Stage 4 model (specificity only)
 yp2spec <-c(binom.test(264,264)$estimate, binom.test(264,264)$conf.int)
-yp2sens 
 yp2spec 
 
+```
 
-PI <- predictInterval(merMod = ypool2, newdata = ymp2,
-                        level = 0.95, n.sims = 1000,
-                        stat = "median", type="probability",
-                        include.resid.var = TRUE)
+### 5.1.3 Minipool of size 4-7 
+#### Stage 1 model
+```{r message=FALSE, warning=FALSE}
+ymp47 <- Y1mp %>% filter(pool_size_gp=="4 to 7")
+ymp47se <- y1semp %>% filter(pool_size_gp=="4 to 7")
+mp47a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymp47,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp47a_sum <- summary(mp47a)
+mp47a_sum
+isSingular(mp47a)
+set.seed (212)
+mp47a_ci <- confint (mp47a, level=0.99, method="boot", quiet=TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+
+mp47ci <- as.tibble(mp47a_ci)
+mp47est <- as.tibble(mp47a_sum$coefficients[1:2,1])
+
+est47 <- plogis (mp47a_sum$coefficients[1:2,1])
+ci47 <- plogis(mp47a_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+summp47 <- cbind(lab47,est47,ci47)
+gt47 <- gt(as.tibble(summp47))
+gt47
+```
+
+### Pool size 8 to 15
+#### Stage 1 model
+```{r message=FALSE, warning=FALSE}
+
+ymp815 <- Y1mp %>% filter(pool_size_gp=="8 to 15")
+ymp815se <- y1semp %>% filter(pool_size_gp=="8 to 15")
+mp815a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymp815, family=binomial, 
+nAGQ=1,verbose=0) 
+mp815a_sum <- summary(mp815a)
+mp815a_sum
+isSingular(mp815a)
+set.seed (212)
+mp815a_ci <- confint (mp815a, level=0.99, method="boot", quiet=TRUE)
+
+est815 <- plogis (mp815a_sum$coefficients[1:2,1])
+ci815 <- plogis(mp815a_ci[2:3,1:2])
+lab815 <- c("Sensitivity","Specificity")
+sum815<- cbind(lab815,est815,ci815)
+gt815 <- gt(as.tibble(sum815))
+gt815
+```
+
+
+### Pool size 16 to 31
+stage 1: A partial random effects model (mp16a) failed to converge
+stage 2: Univariate random effects model (mp2b) was singular
+stage 3: Univariate fixed effects model (mp2c) for sensitivity
+Stage 4: Binomial test with binomial exact 95% CI fit for specificity
+#### Stage 1 model
+```{r message=FALSE, warning=FALSE}
+
+ymp16 <- Y1mp %>% filter(pool_size_gp=="16 to 31")
+ymp16se <- y1semp %>% filter(pool_size_gp=="16 to 31")
+mp16a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymp16, family=binomial, 
+nAGQ=1,verbose=0) 
+mp16a_sum <- summary(mp16a)
+mp16a_sum
+isSingular(mp16a)
+```
+#### Stage 2 model
+```{r message=FALSE, warning=FALSE}
+mp16b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ymp16se, family=binomial,nAGQ=1,verbose=0) # fixed + random model
+mp16b_sum <- summary(mp16b)
+mp16b_sum
+isSingular(mp16b)
+set.seed (212)
+mp16b_ci <- confint (mp16b, level=0.99, method="boot", quiet=TRUE, nsim=200)
+est16 <- plogis (mp16b_sum$coefficients[1,1])
+ci16 <- plogis(mp16b_ci[2,1:2])
+lab16 <- c("Sensitivity")
+sum16<- c(lab16,est16,ci16)
+gt16 <- gt(as.tibble(sum16))
+gt16
+```
+
+```{r message=FALSE, warning=FALSE}
+#### Stage 4 model (specificity only)
+y16spec <-c(binom.test(6944,6944)$estimate, binom.test(6944,6944)$conf.int)
+y16spec 
 
 ```
-ymp_mod4_7 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|testeval), data = ymp4_7,family=binomial,nAGQ=1,verbose=0) # fixed + random model
-ymp_mod4_7_sum <- summary(ymp_mod4_7)
-ymp_mod4_7_sum
 
-ymp_mod8_15 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|testeval), data = ymp8_15,family=binomial,nAGQ=1,verbose=0) # fixed + random model
-ymp_mod8_15_sum <- summary(ymp_mod8_15)
-ymp_mod8_15_sum
 
-ymp_mod16_31 <- glmer (formula= cbind(true,n-true)~0+sens+spec+
-(0+sens|testeval), data = ymp16_31,family=binomial,nAGQ=1,verbose=0) # fixed + random model
-ymp_mod16_31_sum <- summary(ymp_mod16_31)
-ymp_mod16_31_sum
+### Pool size 32+
+Only 1 study was included with a pool size 32+. We therefore summarised by binom.test and binomial exact CI (99%)
+
+```{r message=FALSE, warning=FALSE}
+ymp32 <- Y1mp %>% filter(pool_size_gp=="32+")
+ymp32se <- y1semp %>% filter(pool_size_gp=="32+")
+ymp32sens <-c(binom.test(26,26)$estimate, binom.test(26,26)$conf.int)
+ymp32spec <-c(binom.test(422,422)$estimate, binom.test(422,422)$conf.int)
+cosum <- rbind(ymp32sens,ymp32spec)
+rowlab <- c("Sensitivity","specificity")
+comb_summary <-cbind(rowlab,cosum)
+comb<- as.tibble(comb_summary)
+comb<- comb %>% rename(Parameter = rowlab, estimate ="probability of success", "lower 95% CI"=V3, "upper 95% CI"=V4)
+comb$estimate = as.numeric (comb$estimate)
+comb$`lower 95% CI` = as.numeric (comb$`lower 95% CI`)
+comb$`upper 95% CI` = as.numeric (comb$`upper 95% CI`)
+combgt <- gt(comb)
+combgt2 <- combgt %>% fmt_number(columns = c(estimate, "lower 95% CI", "upper 95% CI"),decimals = 3)
+combgt2
+```
 
 
 ## 5.2 NAAT type and Pool size groups and NAAT type
@@ -786,10 +890,16 @@ ymp_mod16_31_sum
 # 6. Meta-regression exploring heterogeneity
 Meta-regressions were conducted for:
 
-(a) Sensitivity as outcome (univariate) and test evaluation as level 2 variable
-(b) Sensitivity as outcome (univariate) and cohort as level 2 variable
-(c) Sensitivity and specificity as outcome (bivariate) and test evaluation as level 2 variable, with random effects for sensitivity only and separate fixed effects for sensitivity and specificity
-(d) Sensitivity and specificity as outcome (bivariate) and cohort as level 2 variable,  with random effects for sensitivity only and separate fixed effects for sensitivity and specificity
+(a) Univariate binomial random-effects model:
+
+* Outcome:Sensitivity 
+* Variance assessed within (level 1) and between (level 2) test evaluations.
+
+(b) Bivariate binomial partial random-effects model 
+* Outcome: Sensitivity and specificity 
+* Variance assessed within (level 1) and between (level 2) test evaluations.
+* Random effects considered for sensitivity, but specificity modelled by fixed effects only.
+
 
 * A block-wise backwards-elimination approach in which covariates were entered in groups (blocks) defined a priori on the basis of theoretical importance:
    * Block 1 (matchiing sub-groups): naat, symptoms, pool size, sample type,
@@ -866,10 +976,40 @@ GGally::ggpairs(cont, columns=1:5)
 ### 6.1.3 Homogeneity of variance between factor levels
 ```{r message=FALSE, warning=FALSE}
 
-leveneTest(residuals(ysemp2) ~ y1semp$naat)
-leveneTest(residuals(ysemp2) ~ y1semp$sample)
-leveneTest(residuals(ysemp2) ~ y1semp$modified_protocol)
-leveneTest(residuals(ysemp2) ~ y1semp$reg)
+lt1<- leveneTest(residuals(ysemp2) ~ y1semp$naat)
+lt2<- leveneTest(residuals(ysemp2) ~ y1semp$sample)
+lt3<- leveneTest(residuals(ysemp2) ~ y1semp$modified_protocol)
+lt4<- leveneTest(residuals(ysemp2) ~ y1semp$reg)
+lt<- rbind(lt1[1,1:3],lt2[1,1:3],lt3[1,1:3],lt4[1,1:3])
+covariate <- c("NAAT type", "Sample type", "Modified protocol", "Regulatory authorisation")
+lt <- cbind(covariate,lt)
+lt
+```
+
+
+```{r message=FALSE, warning=FALSE}
+y1sempexp<- as.tibble(y1sempexp)
+y1sempexp$sample <- dplyr::recode_factor (y1sempexp$sample, "Upper respiratory tract swab" = "URT Swab")
+
+cvarp1<- ggplot(y1sempexp, aes(x=naat,y=sensitivity, colour=naat)) + geom_boxplot()+
+geom_jitter(alpha=0.2)+ coord_flip() + theme(legend.position="none")+scale_y_continuous(
+  breaks=seq(0,1,0.1), limits=c(0.5,1))
+cvarp2<- ggplot(y1sempexp, aes(x=naat,y=logit, colour=naat)) + geom_boxplot()+
+geom_jitter(alpha=0.2)+ coord_flip() + theme(legend.position="none")
+cvarp3<- ggplot(y1sempexp, aes(x=sample ,y=sensitivity, colour=sample))+ geom_boxplot ()+
+geom_jitter(alpha=0.2) + coord_flip() + theme(legend.position="none")
+cvarp4<- ggplot(y1sempexp, aes(x=sample ,y=logit, colour=sample))+ geom_boxplot ()+
+geom_jitter(alpha=0.2) + coord_flip() + theme(legend.position="none")
+cvarp5<- ggplot(y1sempexp, aes(x=modified_protocol,y=sensitivity, colour=modified_protocol)) + geom_boxplot() + theme(legend.position="none")+ geom_jitter(alpha=0.2) + coord_flip()
+cvarp6<- ggplot(y1sempexp, aes(x=modified_protocol,y=logit, colour=modified_protocol)) + geom_boxplot() + theme(legend.position="none")+ geom_jitter(alpha=0.2) + coord_flip()
+cvarp7<- ggplot(y1sempexp, aes(x=reg,y=sensitivity, colour=reg)) + geom_boxplot() + theme(legend.position="none")+ geom_jitter(alpha=0.2) + coord_flip()
+cvarp8<- ggplot(y1sempexp, aes(x=reg, y=logit, colour=reg)) + theme(legend.position="none")+ geom_jitter(alpha=0.2) + coord_flip()
+a<- ggarrange(cvarp1,cvarp2)
+b<- ggarrange(cvarp3,cvarp4)
+c<- ggarrange(cvarp5,cvarp6)
+d<- ggarrange(cvarp7,cvarp8)
+ggarrange(a,b,c,d, nrow = 4)
+
 ```
 
 ## 6.2 Models with Random effects at test evaluation level
@@ -1183,18 +1323,18 @@ Y1mp <- Y1mp %>% mutate(spweak_pos = weak_pos*spec)
 Y1mp <- Y1mp %>% mutate(senaat2 = naat2*sens)
 Y1mp <- Y1mp %>% mutate(spnaat2 = naat2*spec)
 Y1mp <- Y1mp %>% mutate(semultipos = multipos*sens)
-Y1mp <- Y1mp %>% mutate(facnaat = as.factor(senaat2))
+Y1mp <- Y1mp %>% mutate(senaat2 = as.factor(senaat2))
 Y1mp <- Y1mp %>% mutate(samp = if_else(sample=="Upper respiratory tract swab",1,0))
 Y1mp <- Y1mp %>% mutate(sesamp=samp*sens)
-Y1mp <- Y1mp %>% mutate(facsamp = as.factor(sesamp))
-Y1mp$facnaat <- fct_relevel(Y1mp$facnaat,"3","2","1","0")
+Y1mp <- Y1mp %>% mutate(sesamp = as.factor(sesamp))
+Y1mp$senaat2 <- fct_relevel(Y1mp$senaat2,"3","2","1","0")
 Y1mp <- Y1mp %>% mutate(modprot = if_else(modified_protocol=="T",1,0))
 Y1mp <- Y1mp %>% mutate(modprot=modprot*sens)
 Y1mp <- Y1mp %>% mutate(semodprot = as.factor(modprot))
 ```
 
 ```{r message=FALSE, warning=FALSE}
-ypartmp17 <- glmer (formula= cbind(true,n-true)~0+spec+sens+selog2p+seweak_pos+facnaat+facsamp+semodified_interpret+semodprot+sereg+(0+sens|testeval),
+ypartmp17 <- glmer (formula= cbind(true,n-true)~0+spec+sens+selog2p+seweak_pos+senaat2+sesamp+semodified_interpret+semodprot+sereg+(0+sens|testeval),
                  data = Y1mp,family=binomial, nAGQ=1,verbose=0,
                  control=glmerControl(optimizer="bobyqa",optCtrl=list
                                       (maxfun=2e5)))
@@ -1203,10 +1343,238 @@ ypartmp17_sum
 ypartmp17_residuals <-simulateResiduals(ypartmp17, plot = T)
 testDispersion(ypartmp17_residuals)
 ```
+
+
+
+# 7. Bayesian implementation
+
 ```{r message=FALSE, warning=FALSE}
-ysemp9a <- glmer(sensitivity~1+log2p*weak_posfold+(1|testeval),
-                 weights=n, data=y1semp,family="binomial")
-ysemp9a_sum <- summary(ysemp9a)
-ysemp9a_sum
-ggpredict(ysemp9a)
+
+bayesian <- metadata %>% dplyr::select(eval_id, test_eval_id,
+                                       cohort_id,t_p,f_n,f_p,t_n,disease_p, disease_n,
+                                  pnaat, pool_size_gp,pool_size,naat,symptoms, sample, pool_type, sample_pool, log2p,modified_protocol,modified_interpret,
+                                  reg, log2lod, num_target,index_assay)
+bayesian <- bayesian %>% dplyr::rename(studynames = test_eval_id, TP = t_p, FN = f_n,
+                                       FP = f_p, TN = t_n, n1 = disease_p, n2 = disease_n)
 ```
+
+## 7.2 Summary estimates
+
+### 7.2.1 Combinatorial
+To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
+User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
+
+```{r message=FALSE, warning=FALSE}
+
+sens_ab <- beta.select(list(x = 0.90, p = 0.5), list(x = 0.98, p = 0.9))
+spec_ab <- beta.select(list(x = 0.97, p = 0.5), list(x = 0.999, p = 0.9))
+
+# Sensitivity Using user-defined values
+ycombaysian_sens <- binom.bayes(25,25,prior.shape1 = sens_ab[1], prior.shape2 = sens_ab[2])
+print(ycombaysian_sens)
+binom.bayes.densityplot(ycombaysian_sens)
+
+# Sensitivity Using  defaults
+ycombaysian_sens2 <- binom.bayes(25,25,prior.shape1 = 0.5, prior.shape2 =0.5)
+print(ycombaysian_sens2)
+binom.bayes.densityplot(ycombaysian_sens2)
+
+# Specificity using user-defined
+ycombaysian_spec <- binom.bayes(1765,1766,prior.shape1 = spec_ab[1], prior.shape2 = spec_ab[2])
+print(ycombaysian_spec)
+binom.bayes.densityplot(ycombaysian_spec)
+
+# Specificity using defaults
+ycombaysian_spec2 <- binom.bayes(1765,1766,prior.shape1 = 0.5, prior.shape2 =0.5)
+print(ycombaysian_spec2)
+binom.bayes.densityplot(ycombaysian_spec2)
+```
+
+### 7.2.2 Matrix
+#### Estimate sens and spec (and 95% CIs) using Bayesian method
+To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
+User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
+
+```{r message=FALSE, warning=FALSE}
+
+sens_ab <- beta.select(list(x = 0.90, p = 0.5), list(x = 0.98, p = 0.9))
+spec_ab <- beta.select(list(x = 0.97, p = 0.5), list(x = 0.999, p = 0.9))
+
+# Sensitivity by user-defined values
+ymatbaysian_sens <- binom.bayes(3,3,prior.shape1 = sens_ab[1], prior.shape2 = sens_ab[2])
+print(ymatbaysian_sens)
+binom.bayes.densityplot(ymatbaysian_sens)
+
+# Sensitivity by default values
+ymatbaysian_sens2 <- binom.bayes(3,3,prior.shape1 = 0.5, prior.shape2 =0.5)
+print(ymatbaysian_sens2)
+binom.bayes.densityplot(ymatbaysian_sens2)
+
+# Specificity by user-defined values
+ymatbaysian_spec <- binom.bayes(72,72,prior.shape1 = spec_ab[1], prior.shape2 = spec_ab[2])
+print(ymatbaysian_spec)
+binom.bayes.densityplot(ymatbaysian_spec)
+
+# Specificity by default values
+ymatbaysian_spec2 <- binom.bayes(72,72,prior.shape1 = 0.5, prior.shape2 =0.5)
+print(ymatbaysian_spec2)
+binom.bayes.densityplot(ymatbaysian_spec2)
+```
+
+### 7.2.3 Minipool (all)
+```{r message=FALSE, warning=FALSE}
+
+Bmpall <- bayesian %>% filter(pnaat == "Minipool")
+
+outpriors = makePriors(var.prior = "PC", 
+                    var2.prior = "PC",
+                    cor.prior = "PC",
+                    var.par = c(3, 0.05),  
+                    var2.par = c(0.1, 0.05), 
+                    cor.par = c(3, 0, NA, -0.5, 0.01, 0.5, 0.01),
+                    init = c(0.01, 0.01, -0.1))
+
+outdata = makeData(Bmpall, model.type = 1, modality = NULL, covariates = NULL)
+set.seed(18674)
+BMinipool<- runModel(outdata, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMPout = makeObject(model = BMinipool, nsample =  1000 )
+
+plot(BMPout, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMPout, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMPout, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMPout, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMPout, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMPout, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+
+## 7.3 Sub-group analyses
+
+### 7.3.1 Pool sizes
+
+#### Minipool of 2
+
+##### bamdit
+```{r message=FALSE, warning=FALSE}
+set.seed(2017)
+# Filter for minipool  size 4 to 7
+confmatrix2 <- confmatrix %>% mutate(n1 = TP+FN)
+confmatrix2 <- confmatrix2 %>% mutate(n2 = FP+TN)
+confmatrix2 <- confmatrix2 %>% mutate(Study =as.character(Study))
+confmatrix2 <- confmatrix2 %>% filter(pool_size_gp == "2")
+
+
+result <- metadiag(confmatrix2, two.by.two=TRUE, re = "normal", re.model = "DS", link = "logit", sd.Fisher.rho = 1.7, nr.burnin = 1000, nr.iterations = 5000, nr.chains = 4, r2jags = TRUE)
+
+plot(result, level = 0.5, parametric.smooth = TRUE)
+
+plotsesp(result)
+summary(result, digits = 3, intervals = c(0.025,0.5, 0.975))
+```
+
+##### meta4diag
+```{r message=FALSE, warning=FALSE}
+                    
+outdata = makeData(Bmpall[Bmpall$pool_size_gp =="2",], model.type = 1, modality = NULL, covariates = NULL)
+set.seed(18674)
+BMinipool<- runModel(outdata, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMP2out = makeObject(model = BMinipool, nsample =  1000 )
+
+plot(BMP2out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP2out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP2out, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP2out, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP2out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMP2out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+#### Minipool of 4 to 7
+```{r message=FALSE, warning=FALSE}
+set.seed(2017)
+# Filter for minipool  size 4 to 7
+confmatrix2 <- confmatrix %>% mutate(n1 = TP+FN)
+confmatrix2 <- confmatrix2 %>% mutate(n2 = FP+TN)
+confmatrix2 <- confmatrix2 %>% mutate(Study =as.character(Study))
+confmatrix4 <- confmatrix2 %>% filter(pool_size_gp == "4 to 7")
+
+
+result <- metadiag(confmatrix4, two.by.two=TRUE, re = "normal", re.model = "DS", link = "logit", sd.Fisher.rho = 1.7, nr.burnin = 1000, nr.iterations = 5000, nr.chains = 4, r2jags = TRUE)
+
+plot(result, level = 0.5, parametric.smooth = TRUE)
+
+plotsesp(result)
+summary(result, digits = 3, intervals = c(0.025,0.5, 0.975))
+```
+
+
+
+```{r message=FALSE, warning=FALSE}
+
+outdata4 = makeData(data =Bmpall[Bmpall$pool_size_gp =="4 to 7",], model.type = 1, modality = NULL, covariates = NULL)
+
+bm4<- runModel(outdata4, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMP4out = makeObject(model = bm4, nsample = 1000)
+
+plot(BMP4out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+#### Minipool of 8 to 15
+```{r message=FALSE, warning=FALSE}
+
+outdata8 = makeData(data =Bmpall[Bmpall$pool_size_gp =="8 to 15",], model.type = 1, modality = NULL, covariates = NULL)
+
+bm<- runModel(outdata4, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMP8out = makeObject(model = bm, nsample=1000)
+
+plot(BMP8out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP8out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP8out, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP8out, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP8out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+outdata4 = makeData(data =Bmpall[Bmpall$pool_size_gp =="4 to 7",], model.type = 1, modality = NULL, covariates = NULL)
+
+bm4<- runModel(outdata4, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMP4out = makeObject(model = bm4, nsample =  =1000)
+
+plot(BMP4out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+
+```{r message=FALSE, warning=FALSE}
+
+outdata4 = makeData(data =Bmpall[Bmpall$pool_size_gp =="4 to 7",], model.type = 1, modality = NULL, covariates = NULL)
+
+bm4<- runModel(outdata4, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
+
+BMP4out = makeObject(model = bm4, nsample =  =1000)
+
+plot(BMP4out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var1", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "var2", overlay.prior = TRUE, lwd = 2, save = FALSE)
+plot(BMP4out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
+forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
+```
+
+## 7.4 Metaregression
+
+## 7.5 Sensitivity analysis
+
+

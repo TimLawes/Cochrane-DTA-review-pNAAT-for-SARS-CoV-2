@@ -1,70 +1,70 @@
-Study,TP,FN,FP,TN,fpr,sens,n1,n2
-Anderson 2020 [A],19,0,0,475,0,1,19,475
-Anderson 2020 [B],19,0,0,281,0,1,19,281
-Ben-Ami 2020 [A],27,0,0,133,0,1,27,133
-Bhattacharya 2020,42,0,0,1368,0,1,42,1368
-Chhikara 2020 (a),24,0,0,476,0,1,24,476
-Christoff 2020,94,0,0,519,0,1,94,519
-de Salasar 2020 [A],31,3,0,515,0,0.9117647058823529,34,515
-de Salasar 2020 [B],14,7,0,239,0,0.6666666666666666,21,239
-de Salasar 2020 [C],91,15,0,1794,0,0.8584905660377359,106,1794
-de Salasar 2020 [D],17,3,0,220,0,0.85,20,220
-de Salasar 2020 [E],53,7,0,500,0,0.8833333333333333,60,500
-Gupta 2020,39,1,0,240,0,0.975,40,240
-Martin 2020 [A],25,1,0,421,0,0.9615384615384616,26,421
-Martin 2020 [B],24,2,0,421,0,0.9230769230769231,26,421
-Martin 2020 [C],26,0,0,422,0,1,26,422
-More 2020 [A],3,0,0,127,0,1,3,127
-More 2020 [B],8,2,0,163,0,0.8,10,163
-Pasomsub 2020 [A],18,0,0,182,0,1,18,182
-Pasomsub 2020 [B],17,0,0,183,0,1,17,183
-Petrucca 2020 (a),36,0,0,1999,0,1,36,1999
-Schmidt 2020 (a)[A],4,0,0,46,0,1,4,46
-Schmidt 2020 (b)[B],8,0,0,92,0,1,8,92
-Singh 2020,21,4,0,520,0,0.84,25,520
-Volpato 2020 [A],41,0,0,179,0,1,41,179
-Volpato 2020 [B],39,2,0,181,0,0.9512195121951219,41,181
-Wang 2020(a)[A],36,2,0,730,0,0.9473684210526315,38,730
-Wang 2020(a)[B],27,0,0,517,0,1,27,517
-Wang 2020(a)[C],32,6,0,730,0,0.8421052631578947,38,730
-Wang 2020(a)[D],34,4,0,730,0,0.8947368421052632,38,730
-Wang 2020(b)[E],45,13,1,821,0.0012165450121654502,0.7758620689655172,58,822
-Wang 2020(b)[F],47,11,1,821,0.0012165450121654502,0.8103448275862069,58,822
-Wang 2020(b)[G],43,15,0,822,0,0.7413793103448276,58,822
-Wang 2020(b)[H],50,8,1,821,0.0012165450121654502,0.8620689655172413,58,822
-Abdalhamid 2020,25,0,0,100,0,1,25,100
-Barat 2020 [A],49,3,0,198,0,0.9423076923076923,52,198
-Barat 2020 [B],37,4,0,164,0,0.9024390243902439,41,164
-Barat 2020 [C],47,3,0,200,0,0.94,50,200
-Borillo 2020,101,0,0,1291,0,1,101,1291
-Cesselli 2020,170,0,0,1622,0,1,170,1622
-Kim 2020 (a) [A],50,0,0,50,0,1,50,50
-Kim 2020 (a) [B],50,0,0,100,0,1,50,100
-Kim 2020 (a) [C],50,0,0,250,0,1,50,250
-Kim 2020 (a) [D],47,3,0,350,0,0.94,50,350
-Kim 2020 (a) [E],49,1,0,450,0,0.98,50,450
-Kim 2020 (a) [F],46,4,0,1710,0,0.92,50,1710
-LeBlanc 2020(a)[A],106,6,0,112,0,0.9464285714285714,112,112
-LeBlanc 2020(a)[B],94,18,0,336,0,0.8392857142857143,112,336
-LeBlanc 2020(a)[C],75,37,0,784,0,0.6696428571428571,112,784
-LeBlanc 2020(b)[D],95,7,0,102,0,0.9313725490196079,102,102
-LeBlanc 2020(b)[E],83,19,0,306,0,0.8137254901960784,102,306
-LeBlanc 2020(b)[F],74,28,0,714,0,0.7254901960784313,102,714
-Mitchell 2020[A],34,1,0,185,0,0.9714285714285714,35,185
-Mitchell 2020[B],32,3,0,185,0,0.9142857142857143,35,185
-Praharaj 2020(a)[A],53,7,0,240,0,0.8833333333333333,60,240
-Praharaj 2020(a)[E],42,18,0,540,0,0.7,60,540
-Praharaj 2020(b)[B],20,0,0,80,0,1,20,80
-Praharaj 2020(b)[F],15,5,0,180,0,0.75,20,180
-Praharaj 2020(c)[C],8,2,0,40,0,0.8,10,40
-Praharaj 2020(c)[G],7,3,0,90,0,0.7,10,90
-Praharaj 2020(d)[D],7,3,0,40,0,0.7,10,40
-Praharaj 2020(d)[H],5,5,0,90,0,0.5,10,90
-Sahajpal 2020 (1),19,1,0,180,0,0.95,20,180
-Wacharapluesadee 2020,65,2,0,423,0,0.9701492537313433,67,423
-Watkins 2020[A],18,5,0,112,0,0.782608695652174,23,112
-Watkins 2020[B],18,5,0,207,0,0.782608695652174,23,207
-Watkins 2020[C],15,8,0,442,0,0.6521739130434783,23,442
-Watkins 2020[D],19,1,0,80,0,0.95,20,80
-Watkins 2020[E],19,1,0,180,0,0.95,20,180
-Watkins 2020[F],16,4,0,380,0,0.8,20,380
+Study,TP,FN,FP,TN,pool_size_gp,pool_size,pnaat,naat,sample,pool_type,n1,n2
+Anderson 2020 [A],19,0,0,475,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,19,475
+Anderson 2020 [B],19,0,0,281,8 to 15,10,Minipool,Cartridge-based RT-PCR,Upper respiratory tract swab,Media,19,281
+Ben-Ami 2020 [A],27,0,0,133,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,27,133
+Bhattacharya 2020,42,0,0,1368,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,42,1368
+Chhikara 2020 (a),24,0,0,476,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,24,476
+Christoff 2020,94,0,0,519,16 to 31,16,Minipool,RT-PCR,Upper respiratory tract swab,Multitube,94,519
+de Salasar 2020 [A],31,3,0,515,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,34,515
+de Salasar 2020 [B],14,7,0,239,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,21,239
+de Salasar 2020 [C],91,15,0,1794,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,106,1794
+de Salasar 2020 [D],17,3,0,220,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,20,220
+de Salasar 2020 [E],53,7,0,500,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,60,500
+Gupta 2020,39,1,0,240,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,RNA,40,240
+Martin 2020 [A],25,1,0,421,8 to 15,8,Minipool,Digital RT-PCR,Upper respiratory tract swab,Media,26,421
+Martin 2020 [B],24,2,0,421,16 to 31,16,Minipool,Digital RT-PCR,Upper respiratory tract swab,RNA,26,421
+Martin 2020 [C],26,0,0,422,32+,32,Minipool,Digital RT-PCR,Upper respiratory tract swab,RNA,26,422
+More 2020 [A],3,0,0,127,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,3,127
+More 2020 [B],8,2,0,163,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,10,163
+Pasomsub 2020 [A],18,0,0,182,4 to 7,5,Minipool,RT-PCR,Saliva,RNA,18,182
+Pasomsub 2020 [B],17,0,0,183,8 to 15,10,Minipool,RT-PCR,Saliva,RNA,17,183
+Petrucca 2020 (a),36,0,0,1999,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,36,1999
+Schmidt 2020 (a)[A],4,0,0,46,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Multitube,4,46
+Schmidt 2020 (b)[B],8,0,0,92,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Multitube,8,92
+Singh 2020,21,4,0,520,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,25,520
+Volpato 2020 [A],41,0,0,179,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,41,179
+Volpato 2020 [B],39,2,0,181,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,RNA,41,181
+Wang 2020(a)[A],36,2,0,730,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,38,730
+Wang 2020(a)[B],27,0,0,517,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,27,517
+Wang 2020(a)[C],32,6,0,730,4 to 7,4,Minipool,TMA,Upper respiratory tract swab,Media,38,730
+Wang 2020(a)[D],34,4,0,730,4 to 7,4,Minipool,TMA,Upper respiratory tract swab,Media,38,730
+Wang 2020(b)[E],45,13,1,821,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,58,822
+Wang 2020(b)[F],47,11,1,821,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,58,822
+Wang 2020(b)[G],43,15,0,822,8 to 15,8,Minipool,TMA,Upper respiratory tract swab,Media,58,822
+Wang 2020(b)[H],50,8,1,821,8 to 15,8,Minipool,TMA,Upper respiratory tract swab,Media,58,822
+Abdalhamid 2020,25,0,0,100,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,25,100
+Barat 2020 [A],49,3,0,198,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,52,198
+Barat 2020 [B],37,4,0,164,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,41,164
+Barat 2020 [C],47,3,0,200,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,50,200
+Borillo 2020,101,0,0,1291,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,101,1291
+Cesselli 2020,170,0,0,1622,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,170,1622
+Kim 2020 (a) [A],50,0,0,50,2,2,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,50
+Kim 2020 (a) [B],50,0,0,100,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,100
+Kim 2020 (a) [C],50,0,0,250,4 to 7,6,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,250
+Kim 2020 (a) [D],47,3,0,350,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,350
+Kim 2020 (a) [E],49,1,0,450,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,450
+Kim 2020 (a) [F],46,4,0,1710,16 to 31,16,Minipool,RT-PCR,Upper respiratory tract swab,Media,50,1710
+LeBlanc 2020(a)[A],106,6,0,112,2,2,Minipool,RT-PCR,Upper respiratory tract swab,Media,112,112
+LeBlanc 2020(a)[B],94,18,0,336,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,112,336
+LeBlanc 2020(a)[C],75,37,0,784,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,112,784
+LeBlanc 2020(b)[D],95,7,0,102,2,2,Minipool,RT-PCR,Upper respiratory tract swab,Media,102,102
+LeBlanc 2020(b)[E],83,19,0,306,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,102,306
+LeBlanc 2020(b)[F],74,28,0,714,8 to 15,8,Minipool,RT-PCR,Upper respiratory tract swab,Media,102,714
+Mitchell 2020[A],34,1,0,185,4 to 7,4,Minipool,RT-PCR,Upper respiratory tract swab,Media,35,185
+Mitchell 2020[B],32,3,0,185,4 to 7,4,Minipool,TMA,Upper respiratory tract swab,Media,35,185
+Praharaj 2020(a)[A],53,7,0,240,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,60,240
+Praharaj 2020(a)[E],42,18,0,540,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,60,540
+Praharaj 2020(b)[B],20,0,0,80,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,20,80
+Praharaj 2020(b)[F],15,5,0,180,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,20,180
+Praharaj 2020(c)[C],8,2,0,40,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,10,40
+Praharaj 2020(c)[G],7,3,0,90,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,10,90
+Praharaj 2020(d)[D],7,3,0,40,4 to 7,5,Minipool,RT-PCR,Upper respiratory tract swab,Media,10,40
+Praharaj 2020(d)[H],5,5,0,90,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,10,90
+Sahajpal 2020 (1),19,1,0,180,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,20,180
+Wacharapluesadee 2020,65,2,0,423,8 to 15,10,Minipool,RT-PCR,Upper respiratory tract swab,Media,67,423
+Watkins 2020[A],18,5,0,112,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,23,112
+Watkins 2020[B],18,5,0,207,8 to 15,10,Minipool,RT-PCR,Saliva,Sample,23,207
+Watkins 2020[C],15,8,0,442,16 to 31,20,Minipool,RT-PCR,Saliva,Sample,23,442
+Watkins 2020[D],19,1,0,80,4 to 7,5,Minipool,RT-PCR,Saliva,Sample,20,80
+Watkins 2020[E],19,1,0,180,8 to 15,10,Minipool,RT-PCR,Saliva,Sample,20,180
+Watkins 2020[F],16,4,0,380,16 to 31,20,Minipool,RT-PCR,Saliva,Sample,20,380
