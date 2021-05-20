@@ -716,54 +716,57 @@ We summarise test accuracy for the following sub-groups of minipool pNAAT:
 
 ## 5.1 Pool size groups
 
-### 5.1.2 Minipool of size 2 
+### 5.1.1 Minipool of size 2 
 Only 3 test-evaluations (from 2 studies) looked at minipool sizes of 2.
 stage 1: A partial random effects model (mp2a) was singular.
 stage 2: Univariate random effects model (mp2b) was singular
 stage 3: Univariate fixed effects model (mp2c) for sensitivity
 Stage 4: Binomial test with binomial exact 95% CI fit for specificity
 
-#### Stage 1 model
 ```{r message=FALSE, warning=FALSE}
+#### Stage 1 model
 ymp2 <- Y1mp %>% filter(pool_size_gp=="2")
 ymp2se <- y1semp %>% filter(pool_size_gp=="2")
 mp2a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
 (0+sens|testeval), data = ymp2,
 family=binomial, nAGQ=1,verbose=0) # fixed + random model
 mp2a_sum <- summary(mp2a)
-mp2a_sum
-isSingular(mp2a)
-```
 
 #### Stage 2 model (sensitivity only)
-```{r message=FALSE, warning=FALSE}
-mp2b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ysemp2, family=binomial,nAGQ=1,verbose=0) # fixed + random model
+mp2b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ymp2se, family=binomial,nAGQ=1,verbose=0) # fixed + random model
 mp2b_sum <- summary(mp2b)
-mp2b_sum
-isSingular(mp2b)
-```
 
-```{r message=FALSE, warning=FALSE}
-
-mp2c <- glm (formula= cbind(true,n-true)~ 1, data = ysemp2, family=binomial) # fixed + random model
+#### Stage 3 model (sensitivity only, fixed)
+mp2c <- glm (formula= cbind(true,n-true)~ 1, data = ymp2se, family=binomial) # fixed + random model
 mp2c_sum <- summary(mp2c)
-mp2c_sum
 set.seed (212)
-mp2c_ci <- confint (mp2c, level=0.99, method="boot", quiet=TRUE)
+mp2c_ci <- confint (mp2c, level=0.99, method="boot", quiet=TRUE, nsim=200)
+mp2c_ci <- plogis(mp2c_ci)
+mp2c_ci <- as.tibble(mp2c_ci)
 est2 <- plogis (mp2c_sum$coefficients [1,1])
-ci2 <- plogis(mp2c_ci)
-summp2 <- c(est2,ci2)
-as.tibble(summp2)
+mp2se<- cbind(estimate = est2, lci = mp2c_ci[1,1], uci=mp2c_ci[2,1])
+
+#### Stage 4 model specificity only
+yp2spest  <- binom.test(264,264)$estimate
+yp2spest <- as.tibble(yp2spest)
+yp2spest <- yp2spest %>% rename (estimate = value)
+yp2spci <- binom.test(264,264)$conf.int
+yp2spci <- as.tibble(yp2spci)
+yp2spec <- cbind(estimate = yp2spest[1,1], lci=yp2spci[1,1],uci=yp2spci[2,1])
+
+#### Summary
+yp2sum <- rbind(mp2se, yp2spec)
+names(yp2sum) [2] <- "lower 99% CI"
+names(yp2sum) [3] <- "upper 99% CI"
+lab2sum <- c("Sensitivity","Specificity")
+rowcat <- c("2", "2")
+yp2sums <- cbind(rowcat, lab2sum,yp2sum)
+yp2sums <- yp2sums %>% rename(parameter = lab2sum)
+yp2sums
 ```
 
-```{r message=FALSE, warning=FALSE}
-#### Stage 4 model (specificity only)
-yp2spec <-c(binom.test(264,264)$estimate, binom.test(264,264)$conf.int)
-yp2spec 
 
-```
-
-### 5.1.3 Minipool of size 4-7 
+### 5.1.2 Minipool of size 4-7 
 #### Stage 1 model
 ```{r message=FALSE, warning=FALSE}
 ymp47 <- Y1mp %>% filter(pool_size_gp=="4 to 7")
@@ -776,9 +779,6 @@ mp47a_sum
 isSingular(mp47a)
 set.seed (212)
 mp47a_ci <- confint (mp47a, level=0.99, method="boot", quiet=TRUE)
-```
-
-```{r message=FALSE, warning=FALSE}
 
 mp47ci <- as.tibble(mp47a_ci)
 mp47est <- as.tibble(mp47a_sum$coefficients[1:2,1])
@@ -786,15 +786,17 @@ mp47est <- as.tibble(mp47a_sum$coefficients[1:2,1])
 est47 <- plogis (mp47a_sum$coefficients[1:2,1])
 ci47 <- plogis(mp47a_ci[2:3,1:2])
 lab47 <- c("Sensitivity","Specificity")
-summp47 <- cbind(lab47,est47,ci47)
-gt47 <- gt(as.tibble(summp47))
-gt47
+rowcat <- c("4-7","4-7")
+summp47 <- cbind(rowcat, lab47,est47,ci47)
+sum47 <- as.tibble(summp47)
+sum47 <- sum47 %>% rename (parameter = lab47, estimate = est47, "lower 99% CI"=`0.5 %`, "upper 99% CI"=`99.5 %`)
+sum47
 ```
 
-### Pool size 8 to 15
-#### Stage 1 model
-```{r message=FALSE, warning=FALSE}
+### 5.1.3 Pool size 8 to 15
 
+```{r message=FALSE, warning=FALSE}
+#### Stage 1 model
 ymp815 <- Y1mp %>% filter(pool_size_gp=="8 to 15")
 ymp815se <- y1semp %>% filter(pool_size_gp=="8 to 15")
 mp815a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
@@ -805,87 +807,764 @@ mp815a_sum
 isSingular(mp815a)
 set.seed (212)
 mp815a_ci <- confint (mp815a, level=0.99, method="boot", quiet=TRUE)
-
 est815 <- plogis (mp815a_sum$coefficients[1:2,1])
 ci815 <- plogis(mp815a_ci[2:3,1:2])
 lab815 <- c("Sensitivity","Specificity")
 sum815<- cbind(lab815,est815,ci815)
-gt815 <- gt(as.tibble(sum815))
-gt815
+sum815 <- as.tibble(sum815)
+sum815 <- sum815 %>% rename(parameter = lab815, estimate =est815, "lower 99% CI"=`0.5 %`, "upper 99% CI"=`99.5 %`)
+rowcat <- c("8-15", "8-15")
+sum815 <- cbind(rowcat, sum815)
+sum815
+
 ```
 
 
-### Pool size 16 to 31
+### 5.1.4 Pool size 16 to 31
 stage 1: A partial random effects model (mp16a) failed to converge
 stage 2: Univariate random effects model (mp2b) was singular
 stage 3: Univariate fixed effects model (mp2c) for sensitivity
 Stage 4: Binomial test with binomial exact 95% CI fit for specificity
-#### Stage 1 model
-```{r message=FALSE, warning=FALSE}
 
+```{r message=FALSE, warning=FALSE}
+#### Stage 1 model
 ymp16 <- Y1mp %>% filter(pool_size_gp=="16 to 31")
 ymp16se <- y1semp %>% filter(pool_size_gp=="16 to 31")
 mp16a <- glmer (formula= cbind(true,n-true)~0+sens+spec+
 (0+sens|testeval), data = ymp16, family=binomial, 
 nAGQ=1,verbose=0) 
 mp16a_sum <- summary(mp16a)
-mp16a_sum
-isSingular(mp16a)
-```
+
 #### Stage 2 model
-```{r message=FALSE, warning=FALSE}
-mp16b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ymp16se, family=binomial,nAGQ=1,verbose=0) # fixed + random model
+mp16b <- glmer (formula= cbind(true,n-true)~ 1+(1|testeval), data = ymp16se, family=binomial,nAGQ=1,verbose=0)
 mp16b_sum <- summary(mp16b)
-mp16b_sum
-isSingular(mp16b)
 set.seed (212)
 mp16b_ci <- confint (mp16b, level=0.99, method="boot", quiet=TRUE, nsim=200)
 est16 <- plogis (mp16b_sum$coefficients[1,1])
 ci16 <- plogis(mp16b_ci[2,1:2])
-lab16 <- c("Sensitivity")
-sum16<- c(lab16,est16,ci16)
-gt16 <- gt(as.tibble(sum16))
-gt16
-```
-
-```{r message=FALSE, warning=FALSE}
+sum16<- c(est16,ci16)
 #### Stage 4 model (specificity only)
 y16spec <-c(binom.test(6944,6944)$estimate, binom.test(6944,6944)$conf.int)
-y16spec 
 
+#### Summary 
+y16sum <- rbind(sum16,y16spec)
+y16sum <- as.tibble (y16sum)
+y16sum<- y16sum %>% rename(estimate =V1 , "lower 99% CI"=`0.5 %`, "upper 99% CI"=`99.5 %`)
+rowlab <- c("Sensitivity","Specificity")
+rowcat <- c("16-31", "16-31")
+y16sum <- cbind(rowcat,rowlab,y16sum)
+y16sum<- y16sum %>% rename(parameter =rowlab)
+
+y16sum
 ```
 
 
-### Pool size 32+
-Only 1 study was included with a pool size 32+. We therefore summarised by binom.test and binomial exact CI (99%)
 
+### 5.1.5 Pool size 32+
+Only 1 study was included with a pool size 32+. We therefore summarised by binom.test and binomial exact CI
 ```{r message=FALSE, warning=FALSE}
 ymp32 <- Y1mp %>% filter(pool_size_gp=="32+")
 ymp32se <- y1semp %>% filter(pool_size_gp=="32+")
 ymp32sens <-c(binom.test(26,26)$estimate, binom.test(26,26)$conf.int)
 ymp32spec <-c(binom.test(422,422)$estimate, binom.test(422,422)$conf.int)
-cosum <- rbind(ymp32sens,ymp32spec)
-rowlab <- c("Sensitivity","specificity")
-comb_summary <-cbind(rowlab,cosum)
-comb<- as.tibble(comb_summary)
-comb<- comb %>% rename(Parameter = rowlab, estimate ="probability of success", "lower 95% CI"=V3, "upper 95% CI"=V4)
-comb$estimate = as.numeric (comb$estimate)
-comb$`lower 95% CI` = as.numeric (comb$`lower 95% CI`)
-comb$`upper 95% CI` = as.numeric (comb$`upper 95% CI`)
-combgt <- gt(comb)
-combgt2 <- combgt %>% fmt_number(columns = c(estimate, "lower 95% CI", "upper 95% CI"),decimals = 3)
-combgt2
+ymp32sum <- rbind(ymp32sens,ymp32spec)
+rowlab <- c("Sensitivity","Specificity")
+rowcat <- c("32+", "32+")
+ymp32sum <-cbind(rowcat, rowlab,ymp32sum)
+ymp32sum<- as.tibble(ymp32sum)
+ymp32sum<- ymp32sum %>% rename(parameter = rowlab, estimate ="probability of success", "lower 99% CI"=V4, "upper 99% CI"=V5)
+ymp32sum$estimate = as.numeric (ymp32sum$estimate)
+ymp32sum$`lower 99% CI` = as.numeric (ymp32sum$`lower 99% CI`)
+ymp32sum$`upper 99% CI` = as.numeric (ymp32sum$`upper 99% CI`)
+ymp32sum
+```
+### 5.1.6 Summary table for pool sizes
+```{r message=FALSE, warning=FALSE}
+sums <- metadata %>% filter (pnaat == "Minipool") %>% group_by (pool_size_gp) %>% summarise(Studies =n_distinct(study_id), Cohorts=n_distinct(cohort_id), "Test evaluations" = n_distinct(test_eval_id), "Participants" =sum(totalsamples),"SARS-CoV-2+"=sum(disease_p), TP=sum(t_p),
+                                                   FN=sum(f_n),FP=sum(f_p),TN=sum(t_n))
+psum <- rbind(yp2sums, sum47, sum815, y16sum,ymp32sum)
+psum <- psum %>% pivot_wider(names_from = parameter, values_from = c(estimate, `lower 99% CI`, `upper 99% CI`))
+psum2 <- psum %>% select(-rowcat) %>% mutate_if(is.character,as.numeric)
+psum2 <- cbind(sums,psum2)
+psum3 <- as.tibble(psum2)
+gtpssum <- gt(data = psum3) %>%
+  tab_spanner(label = "Sensitivity",
+    columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity")) %>%
+  tab_spanner(label = "Specificity",
+    columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity")) %>%
+  cols_label(
+    estimate_Specificity = html("Estimate"),
+    "lower 99% CI_Specificity" = html("lower 99% CI"),
+    "upper 99% CI_Specificity" = html("upper 99% CI"),
+      estimate_Sensitivity = html("Estimate"),
+    "lower 99% CI_Sensitivity" = html("lower 99% CI"),
+    "upper 99% CI_Sensitivity" = html("upper 99% CI"),
+    pool_size_gp = html ("Pool size")
+  )%>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+    tab_footnote(
+    footnote = "Stage 1 estimate: bivariate binomial partial-random effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(2,3))) %>%
+  tab_footnote(
+    footnote = "Stage 2 estimate: univariate random-effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 4)) %>%
+    tab_footnote(
+    footnote = "Stage 3 estimate: univariate fixed-effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 1)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 5)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(1,4:5))) %>%
+cols_align(align = "left", columns = pool_size_gp) %>%
+  tab_options(footnotes.marks=c("*","^","+",""))
+gtpssum
 ```
 
 
-## 5.2 NAAT type and Pool size groups and NAAT type
+### 5.1.7 Adding pool size to integer only random-effects model
+```{r message=FALSE, warning=FALSE}
+# All minipool test evaluations
+mpsize1 <- glmer (formula= cbind(true,n-true)~1+log2p+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpsize1_sum <- summary(mpsize1)
+mpsize1_sum
 
-## 5.3 Symptom status and Pool size groups
+# Excluding single study with pool size 32+
+mpsdata2 <- y1semp %>% filter(pool_size<20)
+mpsize2 <- glmer (formula= cbind(true,n-true)~1+log2p+(1|testeval),
+                 data = mpsdata,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpsize2_sum <- summary(mpsize2)
+mpsize2_sum
 
-## 5.4 Sample type and Pool size groups
+lrtest(mpsize1, ysemp2)
+```
 
-## 5.5 Pooling method and Pool size groups
+## 5.2 NAAT type
 
+### 5.2.1 data preparation
+```{r message=FALSE, warning=FALSE}
+ymprtpcr <- Y1mp %>% filter(naat2=="1")
+ysemprtpcr<- y1semp %>% filter(naat2=="1")
+ympddpcr <- Y1mp %>% filter(naat2=="2")
+ysempddpcr<- y1semp %>% filter(naat2=="2")
+ymptma <- Y1mp %>% filter(naat2=="3")
+ysemptma<- y1semp %>% filter(naat2=="3")
+```
+
+### 5.2.2 RT-PCR
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+ymprtpcr <- ymprtpcr %>% filter(test_eval_id !="Anderson 2020 [B]")
+mp_rtpcr <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymprtpcr,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_rtpcr_sum<- summary(mp_rtpcr)
+mp_rtpcr_sum
+isSingular(mp_rtpcr)
+
+set.seed (212)
+mp_rtpcr_ci <- confint (mp_rtpcr, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_rtpcr <- plogis (mp_rtpcr_sum$coefficients[1:2,1])
+ci_rtpcr <- plogis(mp_rtpcr_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("RT-PCR","RT-PCR")
+sum_rtpcr <- cbind(rowcat, lab47,est_rtpcr,ci_rtpcr)
+sum_rtpcr <- as.tibble(sum_rtpcr)
+sum_rtpcr <- sum_rtpcr %>% rename (parameter = lab47, estimate = est_rtpcr, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_rtpcr
+```
+### 5.2.3 Digital PCR
+Stage 1 model was singular
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+mp_ddpcr <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympddpcr,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_ddpcr_sum<- summary(mp_ddpcr)
+mp_ddpcr_sum
+isSingular(mp_ddpcr)
+
+# Stage 2 model: univariate binomial random-effects
+mp_ddpcrb <- glmer (formula= cbind(true,n-true)~0+sens+
+(0+sens|testeval), data = ysempddpcr,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_ddpcrb_sum<- summary(mp_ddpcrb)
+mp_ddpcrb_sum
+isSingular(mp_ddpcrb)
+
+# Stage 3 model: univariate binomial fixed-effects
+mp_ddpcrc <- glm (formula= cbind(true,n-true)~0+sens, data = ysempddpcr,
+family=binomial)
+mp_ddpcrc_sum<- summary(mp_ddpcrc)
+mp_ddpcrc_sum
+mp_ddpcr_ci <- confint (mp_ddpcrc, level=0.99, method="boot", quiet=TRUE,nsim=200)
+
+# Stage 4 model: binomial test for specificity
+mp_ddpcr_spest <-binom.test(1259,1262)$estimate
+mp_ddpcr_spci<- binom.test(1259,1262)$conf.int
+mp_ddpcr_spci <- mp_ddpcr_spci[1:2]
+est_ddpcr <- plogis (mp_ddpcrc_sum$coefficients[1,1])
+ci_ddpcr <- plogis(mp_ddpcr_ci[1:2])
+mp_ddpcr_ci <- rbind(ci_ddpcr, mp_ddpcr_spci)
+mp_ddpcr_est <-rbind(mp_ddpcr_spest, est_ddpcr)
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Digital-PCR","Digital-PCR")
+sum_ddpcr <- cbind(rowcat, lab47,mp_ddpcr_est,mp_ddpcr_ci)
+sum_ddpcr <- as.tibble(sum_ddpcr)
+sum_ddpcr <- sum_ddpcr %>% rename (parameter = lab47, estimate = `probability of success`, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_ddpcr
+```
+
+### 5.2.4 TMA
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+mp_tma <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ymptma,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_tma_sum<- summary(mp_tma)
+mp_tma_sum
+isSingular(mp_tma)
+set.seed (212)
+mp_tma_ci <- confint (mp_tma, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_tma <- plogis (mp_tma_sum$coefficients[1:2,1])
+ci_tma <- plogis(mp_tma_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("TMA","TMA")
+sum_tma <- cbind(rowcat, lab47,est_tma,ci_tma)
+sum_tma <- as.tibble(sum_tma)
+sum_tma <- sum_tma %>% rename (parameter = lab47, estimate = est_tma, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_tma
+```
+
+### 5.2.5 Cartridge-based PCR
+```{r message=FALSE, warning=FALSE}
+mp_cbpcr_sens <-c(binom.test(19,19)$estimate, binom.test(19,19)$conf.int)
+mp_cbpcr_spec <-c(binom.test(281,281)$estimate, binom.test(281,281)$conf.int)
+mp_cbpcr <-(rbind(mp_cbpcr_sens, mp_cbpcr_spec))
+mp_cbpcr <- as.tibble(mp_cbpcr)
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Cartridge-based PCR","Cartridge-based PCR")
+sum_cbpcr <- cbind(rowcat, lab47,mp_cbpcr)
+sum_cbpcr <- as.tibble(sum_cbpcr)
+sum_cbpcr <- sum_cbpcr %>% rename (parameter = lab47, estimate = `probability of success`, "lower 99% CI"=V2, "upper 99% CI" = V3)
+sum_cbpcr
+```
+### 5.2.6 Summary table NAAT type
+```{r message=FALSE, warning=FALSE}
+sum_naat <- metadata %>% filter(pnaat=="Minipool") %>% group_by (naat) %>% summarise(Studies =n_distinct(study_id), Cohorts=n_distinct(cohort_id), "Test evaluations" = n_distinct(test_eval_id), "Participants" =sum(totalsamples),"SARS-CoV-2+"=sum(disease_p), TP=sum(t_p),                                                FN=sum(f_n),FP=sum(f_p),TN=sum(t_n))
+
+naatsum <- rbind(sum_rtpcr, sum_ddpcr, sum_tma, sum_cbpcr)
+naatsum <- naatsum %>% pivot_wider(names_from = parameter, values_from = c(estimate, `lower 99% CI`, `upper 99% CI`))
+naatsum2 <- naatsum %>% select(-rowcat) %>% mutate_if(is.character,as.numeric)
+naatsum2 <- cbind(sum_naat,naatsum2)
+naatsum3 <- as.tibble(naatsum2)
+gtnaatsum <- gt(data = naatsum3) %>%
+  tab_spanner(label = "Sensitivity",
+    columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity")) %>%
+  tab_spanner(label = "Specificity",
+    columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity")) %>%
+  cols_label(
+    estimate_Specificity = html("Estimate"),
+    "lower 99% CI_Specificity" = html("lower 99% CI"),
+    "upper 99% CI_Specificity" = html("upper 99% CI"),
+      estimate_Sensitivity = html("Estimate"),
+    "lower 99% CI_Sensitivity" = html("lower 99% CI"),
+    "upper 99% CI_Sensitivity" = html("upper 99% CI"),
+     naat = html ("NAAT type")
+  )%>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+    tab_footnote(
+    footnote = "Stage 1 estimate: bivariate binomial partial-random effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(1,3))) %>%
+    tab_footnote(
+    footnote = "Stage 3 estimate: univariate fixed-effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 2)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 4)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(2,4))) %>%
+cols_align(align = "left", columns = naat) %>%
+  tab_options(footnotes.marks=c("*","^","+",""))
+gtnaatsum
+```
+
+### 5.2.7 Adding NAAT to integer model
+```{r message=FALSE, warning=FALSE}
+# All minipool test evaluations
+mpnaat1 <- glmer (formula= cbind(true,n-true)~1+naat+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpnaat1_sum <- summary(mpnaat1)
+mpnaat1_sum
+
+# With pool size and naat
+mpnaat2 <- glmer (formula= cbind(true,n-true)~1+naat+log2p+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpnaat2_sum <- summary(mpnaat2)
+mpnaat2_sum
+```
+
+
+## 5.3 Symptom status
+
+### 5.3.1 data preparation
+```{r message=FALSE, warning=FALSE}
+ympsx <- Y1mp %>% filter(symptoms=="Symptomatic")
+ysempsx <- y1semp %>% filter(symptoms=="Symptomatic")
+ympmix <-Y1mp %>% filter(symptoms=="Mixed")
+ysempmix <- y1semp %>% filter(symptoms=="Mixed")
+ympasx <-Y1mp %>% filter(symptoms=="Asymptomatic")
+ysempasx <- y1semp %>% filter(symptoms=="Asymptomatic")
+```
+
+### 5.3.2 Symptomatic
+Stage 1 As zero FNs bivariate binomial random-effects model failed to converge
+Stage 2 Univariate random-effects model for sensitivity fit
+Stage 4: Binomial test fit for specificity
+
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+mp_sx <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympsx,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_sx_sum <- summary(mp_sx)
+mp_sx_sum
+isSingular(mp_sx)
+
+# Stage 2 model: univariate random-effects
+mp_sxb <- glmer (formula= cbind(true,n-true)~0+sens+
+(0+sens|testeval), data = ysempsx,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_sxb_sum<- summary(mp_sxb)
+mp_sxb_sum
+isSingular(mp_sxb)
+
+set.seed (212)
+mp_sxci <- confint (mp_sxb, level=0.99, method="boot", quiet=TRUE,nsim=200)
+mp_sxci
+mp_sx_spest <-binom.test(6720,6720)$estimate
+mp_sx_spci<- binom.test(6720,6720)$conf.int
+mp_sx_spci <- mp_sx_spci[1:2]
+est_sx <- plogis (mp_sxb_sum$coefficients[1,1])
+ci_sx <- plogis(mp_sxci[2,1:2])
+mp_sx_ci <- rbind(ci_sx, mp_sx_spci)
+mp_sx_est <-rbind(est_sx, mp_sx_spest)
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Symptomatic","Symptomatic")
+sum_sx <- cbind(rowcat, lab47,mp_sx_est,mp_sx_ci)
+sum_sx <- as.tibble(sum_sx)
+sum_sx <- sum_sx %>% rename (parameter = lab47, estimate = `probability of success`, "lower 99% CI"= `0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_sx
+```
+
+### 5.3.3 Mixed
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_mix <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympmix,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_mix_sum<- summary(mp_mix)
+mp_mix_sum
+isSingular(mp_mix)
+
+set.seed (212)
+mp_mix_ci <- confint (mp_mix, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_mix <- plogis (mp_mix_sum$coefficients[1:2,1])
+ci_mix <- plogis(mp_mix_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Mixed","Mixed")
+sum_mix <- cbind(rowcat, lab47,est_mix,ci_mix)
+sum_mix <- as.tibble(sum_mix)
+sum_mix <- sum_mix %>% rename (parameter = lab47, estimate = est_mix, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_mix
+```
+
+### 5.3.4 Asymptomatic
+Since zero FN or FP fit both specificity and sensitivity with binomial tests and binomial exact CI
+```{r message=FALSE, warning=FALSE}
+
+# Stage 4: binomial tests
+mp_asx_sens <-c(binom.test(296,296)$estimate, binom.test(296,296)$conf.int)
+mp_asx_spec <-c(binom.test(2709,2709)$estimate, binom.test(2709,2709)$conf.int)
+mp_asx <-(rbind(mp_asx_sens, mp_asx_spec))
+mp_asx <- as.tibble(mp_asx)
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Asmptomatic","Asmptomatic")
+sum_asx <- cbind(rowcat, lab47,mp_asx)
+sum_asx <- as.tibble(sum_asx)
+sum_asx <- sum_asx %>% rename (parameter = lab47, estimate = `probability of success`, "lower 99% CI"=V2, "upper 99% CI" = V3)
+sum_asx
+
+```
+
+### 5.3.5 Summary table Symptom status
+```{r message=FALSE, warning=FALSE}
+sum_sx2 <- metadata %>% filter(pnaat=="Minipool") %>% group_by (symptoms) %>% summarise(Studies =n_distinct(study_id), Cohorts=n_distinct(cohort_id), "Test evaluations" = n_distinct(test_eval_id), "Participants" =sum(totalsamples),"SARS-CoV-2+"=sum(disease_p), TP=sum(t_p),                                                FN=sum(f_n),FP=sum(f_p),TN=sum(t_n))
+
+sxsum <- rbind(sum_asx, sum_mix, sum_sx)
+sxsum <- sxsum %>% pivot_wider(names_from = parameter, values_from = c(estimate, `lower 99% CI`, `upper 99% CI`))
+sxsum2 <- sxsum %>% select(-rowcat) %>% mutate_if(is.character,as.numeric)
+sxsum2 <- cbind(sum_sx2,sxsum2)
+sxsum3 <- as.tibble(sxsum2)
+gtsxsum <- gt(data = sxsum3) %>%
+  tab_spanner(label = "Sensitivity",
+    columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity")) %>%
+  tab_spanner(label = "Specificity",
+    columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity")) %>%
+  cols_label(
+    estimate_Specificity = html("Estimate"),
+    "lower 99% CI_Specificity" = html("lower 99% CI"),
+    "upper 99% CI_Specificity" = html("upper 99% CI"),
+      estimate_Sensitivity = html("Estimate"),
+    "lower 99% CI_Sensitivity" = html("lower 99% CI"),
+    "upper 99% CI_Sensitivity" = html("upper 99% CI"),
+     symptoms = html ("Symptom type")
+  )%>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+    tab_footnote(
+    footnote = "Stage 1 estimate: bivariate binomial partial-random effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = 2)) %>%
+    tab_footnote(
+    footnote = "Stage 2 estimate: univariate random-effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 1)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity"), rows = 3)) %>%
+  tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and exact CI",
+    locations = cells_body(columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(1,3))) %>%
+cols_align(align = "left", columns = symptoms) %>%
+  tab_options(footnotes.marks=c("*","^","+",""))
+gtsxsum
+```
+
+
+### 5.3.6 Adding symptoms to integer model
+Unable to find a bivariate or univariate model that converges
+```{r message=FALSE, warning=FALSE}
+# Symptoms
+mpsx1 <- glmer (formula= cbind(true,n-true)~1+symptoms+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpsx1_sum <- summary(mpsx1)
+mpsx1_sum
+
+# With pool size and symptoms
+mpsx2 <- glm (formula= cbind(true,n-true)~1+symptoms,
+                 data = y1semp,family=binomial)
+mpsx2_sum <- summary(mpsx2)
+mpsx2_sum
+```
+
+## 5.4 Sample type
+### 5.4.1 data preparation
+```{r message=FALSE, warning=FALSE}
+ympurt <- Y1mp %>% filter(sample=="Upper respiratory tract swab")
+ysempurt <- y1semp %>% filter(sample=="Upper respiratory tract swab")
+ympsal <-Y1mp %>% filter(sample=="Saliva")
+ysempsal <- y1semp %>% filter(sample=="Saliva")
+```
+
+### 5.4.2 URT swab
+```{r message=FALSE, warning=FALSE}
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_urt <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympurt,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_urt_sum<- summary(mp_urt)
+mp_urt_sum
+isSingular(mp_urt)
+
+set.seed (212)
+mp_urt_ci <- confint (mp_urt, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_urt <- plogis (mp_urt_sum$coefficients[1:2,1])
+ci_urt <- plogis(mp_urt_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("URT swab","URT swab")
+sum_urt <- cbind(rowcat, lab47,est_urt,ci_urt)
+sum_urt <- as.tibble(sum_urt)
+sum_urt <- sum_urt %>% rename (parameter = lab47, estimate = est_urt, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_urt
+```
+
+### 5.4.3 Saliva
+```{r message=FALSE, warning=FALSE}
+
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_sal <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympsal,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_sal_sum<- summary(mp_sal)
+mp_sal_sum
+isSingular(mp_sal)
+
+set.seed (212)
+mp_sal_ci <- confint (mp_sal, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_sal <- plogis (mp_sal_sum$coefficients[1:2,1])
+ci_sal <- plogis(mp_sal_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Saliva","Saliva")
+sum_sal <- cbind(rowcat, lab47,est_sal,ci_sal)
+sum_sal <- as.tibble(sum_sal)
+sum_sal <- sum_sal %>% rename (parameter = lab47, estimate = est_sal, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_sal
+```
+
+### 5.3.4 Summary table Sample type
+```{r message=FALSE, warning=FALSE}
+sum_samp2 <- metadata %>% filter(pnaat=="Minipool") %>% group_by (sample) %>% summarise(Studies =n_distinct(study_id), Cohorts=n_distinct(cohort_id), "Test evaluations" = n_distinct(test_eval_id), "Participants" =sum(totalsamples),"SARS-CoV-2+"=sum(disease_p), TP=sum(t_p),                                                FN=sum(f_n),FP=sum(f_p),TN=sum(t_n))
+sum_samp2
+
+sampsum <- rbind(sum_urt,sum_sal)
+sampsum <- sampsum %>% pivot_wider(names_from = parameter, values_from = c(estimate, `lower 99% CI`, `upper 99% CI`))
+sampsum2 <- sampsum %>% select(-rowcat) %>% mutate_if(is.character,as.numeric)
+sampsum2 <- cbind(sum_samp2,sampsum2)
+sampsum3 <- as.tibble(sampsum2)
+gtsampsum <- gt(data = sampsum3) %>%
+  tab_spanner(label = "Sensitivity",
+    columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity")) %>%
+  tab_spanner(label = "Specificity",
+    columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity")) %>%
+  cols_label(
+    estimate_Specificity = html("Estimate"),
+    "lower 99% CI_Specificity" = html("lower 99% CI"),
+    "upper 99% CI_Specificity" = html("upper 99% CI"),
+      estimate_Sensitivity = html("Estimate"),
+    "lower 99% CI_Sensitivity" = html("lower 99% CI"),
+    "upper 99% CI_Sensitivity" = html("upper 99% CI"),
+     sample = html ("Sample type")
+  )%>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+    tab_footnote(
+    footnote = "Stage 1 estimate: bivariate binomial partial-random effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(1,2))) %>%
+cols_align(align = "left", columns = sample) %>%
+  tab_options(footnotes.marks=c("*","^","+",""))
+gtsampsum
+```
+
+### 5.3.5 Adding sample to integer model
+```{r message=FALSE, warning=FALSE}
+# Sample type
+mpsamp1 <- glmer (formula= cbind(true,n-true)~1+sample+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpsamp1_sum <- summary(mpsamp1)
+mpsamp1_sum
+
+# With pool size and sample type
+mpsamp1 <- glmer (formula= cbind(true,n-true)~1+sample+log2p+(1|testeval),
+                 data = y1semp,family=binomial, nAGQ=1,verbose=0,
+                 control=glmerControl(optimizer="bobyqa",optCtrl=list
+                                      (maxfun=2e5)))
+mpsamp1_sum <- summary(mpsamp1)
+mpsamp1_sum
+```
+
+## 5.5 Pool type
+
+### 5.5.1 data preparation
+```{r message=FALSE, warning=FALSE}
+ympMed <- Y1mp %>% filter(pool_type=="Media")
+ysempMed <- y1semp %>% filter(pool_type=="Media")
+ympMTT <-Y1mp %>% filter(pool_type=="Multitube")
+ysempMTT <- y1semp %>% filter(pool_type=="Multitube")
+ympRNA <- Y1mp %>% filter(pool_type=="RNA")
+ysempRNA <- y1semp %>% filter(pool_type=="RNA")
+ympDIR <-Y1mp %>% filter(pool_type=="Sample")
+ysempDIR <- y1semp %>% filter(pool_type=="Sample")
+```
+
+### 5.5.2 swab media
+```{r message=FALSE, warning=FALSE}
+
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_Med <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympMed,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_Med_sum<- summary(mp_Med)
+mp_Med_sum
+isSingular(mp_Med)
+
+set.seed (212)
+mp_Med_ci <- confint (mp_Med, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_Med <- plogis (mp_Med_sum$coefficients[1:2,1])
+ci_Med <- plogis(mp_Med_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Transport Media","Transport Media")
+sum_Med <- cbind(rowcat, lab47,est_Med,ci_Med)
+sum_Med <- as.tibble(sum_Med)
+sum_Med <- sum_Med %>% rename (parameter = lab47, estimate = est_Med, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_Med
+```
+
+
+### 5.5.3 multitube
+
+```{r message=FALSE, warning=FALSE}
+
+# Stage 4: binomial tests
+mp_MTT_sens<-c(binom.test(106,106)$estimate, binom.test(
+  106,106, conf.level=0.99)$conf.int)
+mp_MTT_spec <-c(binom.test(657,657)$estimate, binom.test(
+  657,657, conf.level = 0.99)$conf.int)
+mp_MTT <-(rbind(mp_MTT_sens, mp_MTT_spec))
+mp_MTT <- as.tibble(mp_MTT)
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Multitube","Multitube")
+sum_MTT <- cbind(rowcat, lab47,mp_MTT)
+sum_MTT <- as.tibble(sum_MTT)
+sum_MTT <- sum_MTT %>% rename (parameter = lab47, estimate = `probability of success`, "lower 99% CI"=V2, "upper 99% CI" = V3)
+sum_MTT
+
+```
+
+### 5.5.4 Direct
+```{r message=FALSE, warning=FALSE}
+
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_DIR <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympDIR,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_DIR_sum<- summary(mp_DIR)
+mp_DIR_sum
+isSingular(mp_DIR)
+
+set.seed (212)
+mp_DIR_ci <- confint (mp_DIR, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_DIR <- plogis (mp_DIR_sum$coefficients[1:2,1])
+ci_DIR <- plogis(mp_DIR_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("Sample (Direct)","Sample (Direct)")
+sum_DIR <- cbind(rowcat, lab47,est_DIR,ci_DIR)
+sum_DIR <- as.tibble(sum_DIR)
+sum_DIR <- sum_DIR %>% rename (parameter = lab47, estimate = est_DIR, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_DIR
+```
+
+
+
+
+
+
+### 5.5.5 RNA
+```{r message=FALSE, warning=FALSE}
+
+# Stage 1 model: bivariate binomial partial random-effects
+
+mp_RNA <- glmer (formula= cbind(true,n-true)~0+sens+spec+
+(0+sens|testeval), data = ympRNA,
+family=binomial, nAGQ=1,verbose=0) # fixed + random model
+mp_RNA_sum<- summary(mp_RNA)
+mp_RNA_sum
+isSingular(mp_RNA)
+
+set.seed (212)
+mp_RNA_ci <- confint (mp_RNA, level=0.99, method="boot", quiet=TRUE,nsim=200)
+est_RNA <- plogis (mp_RNA_sum$coefficients[1:2,1])
+ci_RNA <- plogis(mp_RNA_ci[2:3,1:2])
+lab47 <- c("Sensitivity","Specificity")
+rowcat <- c("RNA (post-extraction)","RNA (post-extraction)")
+sum_RNA <- cbind(rowcat, lab47,est_RNA,ci_RNA)
+sum_RNA <- as.tibble(sum_RNA)
+sum_RNA <- sum_RNA %>% rename (parameter = lab47, estimate = est_RNA, "lower 99% CI"=`0.5 %`, "upper 99% CI" = `99.5 %`)
+sum_RNA
+```
+
+
+
+
+### 5.5.7 Summary table for pool type
+```{r message=FALSE, warning=FALSE}
+sum_ptype2 <- metadata %>% filter(pnaat=="Minipool") %>% group_by (pool_type) %>% summarise(Studies =n_distinct(study_id), Cohorts=n_distinct(cohort_id), "Test evaluations" = n_distinct(test_eval_id), "Participants" =sum(totalsamples),"SARS-CoV-2+"=sum(disease_p), TP=sum(t_p),                                                FN=sum(f_n),FP=sum(f_p),TN=sum(t_n))
+sum_ptype2
+
+ptypesum <- rbind(sum_Med, sum_MTT, sum_RNA, sum_DIR)
+ptypesum <- ptypesum %>% pivot_wider(names_from = parameter, values_from = c(estimate, `lower 99% CI`, `upper 99% CI`))
+ptypesum2 <- ptypesum %>% select(-rowcat) %>% mutate_if(is.character,as.numeric)
+ptypesum2 <- cbind(sum_ptype2, ptypesum2)
+ptypesum3 <- as.tibble(ptypesum2)
+gtptypesum <- gt(data = ptypesum3) %>%
+  tab_spanner(label = "Sensitivity",
+    columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity")) %>%
+  tab_spanner(label = "Specificity",
+    columns = c("estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity")) %>%
+  cols_label(
+    estimate_Specificity = html("Estimate"),
+    "lower 99% CI_Specificity" = html("lower 99% CI"),
+    "upper 99% CI_Specificity" = html("upper 99% CI"),
+      estimate_Sensitivity = html("Estimate"),
+    "lower 99% CI_Sensitivity" = html("lower 99% CI"),
+    "upper 99% CI_Sensitivity" = html("upper 99% CI"),
+     pool_type = html ("Pool type")
+  )%>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+    tab_footnote(
+    footnote = "Stage 1 estimate: bivariate binomial partial-random effects model",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = c(1,3,4))) %>%
+      tab_footnote(
+    footnote = "Stage 4 estimate: binomial test and 95% CI",
+    locations = cells_body(columns = c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), rows = 2)) %>%
+cols_align(align = "left", columns = pool_type) %>%
+  tab_options(footnotes.marks=c("*","^","+",""))
+gtptypesum
+```
+
+## 5.6 Summary all subgroups
+```{r message=FALSE, warning=FALSE}
+psum4 <-psum3 %>% rename (Subgroup= pool_size_gp)
+naatsum4 <-naatsum3 %>% rename (Subgroup= naat)
+sxsum4 <-sxsum3 %>% rename (Subgroup= symptoms)
+sampsum4 <-sampsum3 %>% rename (Subgroup= sample)
+ptypesum4 <-ptypesum3 %>% rename (Subgroup= pool_type)
+subgp <- rbind(psum4, naatsum4, sxsum4, sampsum4, ptypesum4)
+subgpgt <-gt(subgp) %>%
+  tab_row_group("Pool type", rows = 15:18, id = "pooltype") %>%
+tab_row_group("Sample type", rows = 13:14, id = "sample") %>%
+  tab_row_group("Symptom status", rows = 10:12, id = "symptoms") %>%
+  tab_row_group("NAAT type", rows = 6:9, id = "naat")%>%
+   tab_row_group("Pool size", rows = 1:5, id = "pooln")  %>%
+ fmt_number(columns= c("estimate_Sensitivity", "lower 99% CI_Sensitivity", "upper 99% CI_Sensitivity","estimate_Specificity", "lower 99% CI_Specificity", "upper 99% CI_Specificity"), decimals=3) %>%
+   cols_merge(columns = c("lower 99% CI_Sensitivity","upper 99% CI_Sensitivity"),
+    pattern = "{1}&mdash;{2}")  %>%
+   cols_merge(columns = c("lower 99% CI_Specificity","upper 99% CI_Specificity"),
+    pattern = "{1}&mdash;{2}") %>%
+  cols_move(
+    columns = "estimate_Specificity",
+    after = "lower 99% CI_Sensitivity"
+  ) %>%
+  cols_label(
+    estimate_Sensitivity = "Est.",
+    estimate_Specificity = "Est.",
+    "lower 99% CI_Sensitivity" = "99% CI",
+    "lower 99% CI_Specificity" = "99% CI") %>%
+  tab_spanner(
+    label = "Sensitivity",
+    columns = c(estimate_Sensitivity,"lower 99% CI_Sensitivity")) %>%
+  tab_spanner(
+    label = "Specificity",
+    columns = c(estimate_Specificity,"lower 99% CI_Specificity")) %>%
+  cols_align ("left", columns=Subgroup)
+subgpgt
+```
 
 # 6. Meta-regression exploring heterogeneity
 Meta-regressions were conducted for:
@@ -1344,9 +2023,11 @@ ypartmp17_residuals <-simulateResiduals(ypartmp17, plot = T)
 testDispersion(ypartmp17_residuals)
 ```
 
+# 7. Test comparison
 
+# 8. Sensitivity analysis
 
-# 7. Bayesian implementation
+# 9. Bayesian implementation
 
 ```{r message=FALSE, warning=FALSE}
 
@@ -1358,9 +2039,9 @@ bayesian <- bayesian %>% dplyr::rename(studynames = test_eval_id, TP = t_p, FN =
                                        FP = f_p, TN = t_n, n1 = disease_p, n2 = disease_n)
 ```
 
-## 7.2 Summary estimates
+## 9.2 Summary estimates
 
-### 7.2.1 Combinatorial
+### 9.2.1 Combinatorial
 To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
 User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
 
@@ -1390,7 +2071,7 @@ print(ycombaysian_spec2)
 binom.bayes.densityplot(ycombaysian_spec2)
 ```
 
-### 7.2.2 Matrix
+### 9.2.2 Matrix
 #### Estimate sens and spec (and 95% CIs) using Bayesian method
 To obtain 95% CI by Bayesian inference, we used both default and user-defined values for the shape parameters 'a' and 'b' describing the prior beta distribution for binomial outcomes.
 User-defined values for 'a' and 'b' were identified from a priori estimates of 50th and 90th centiles of sensitivity (0.90 and 0.98) and specificity (0.970 and 0.999)
@@ -1421,7 +2102,7 @@ print(ymatbaysian_spec2)
 binom.bayes.densityplot(ymatbaysian_spec2)
 ```
 
-### 7.2.3 Minipool (all)
+### 9.2.3 Minipool (all)
 ```{r message=FALSE, warning=FALSE}
 
 Bmpall <- bayesian %>% filter(pnaat == "Minipool")
@@ -1448,9 +2129,9 @@ plot(BMPout, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
 forest(BMPout, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
 ```
 
-## 7.3 Sub-group analyses
+## 9.3 Sub-group analyses
 
-### 7.3.1 Pool sizes
+### 9.3.1 Pool sizes
 
 #### Minipool of 2
 
@@ -1573,8 +2254,8 @@ plot(BMP4out, var.type = "rho", overlay.prior = TRUE, lwd = 2, save = FALSE)
 forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15, p.col="black",nameShow="left", dataShow="right", estShow="center", text.cex=0.8,shade.col="gray", arrow.col="black", arrow.lty=1, arrow.lwd=1,cut=TRUE, intervals=c(0.025,0.975),main="Forest plot", main.cex=1, axis.cex=1)
 ```
 
-## 7.4 Metaregression
+## 9.4 Metaregression
 
-## 7.5 Sensitivity analysis
+## 9.5 Sensitivity analysis
 
 
