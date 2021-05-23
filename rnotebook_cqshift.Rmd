@@ -288,3 +288,6 @@ geom_point()+
 geom_hline(yintercept = 0)+
 scale_y_continuous("Residuals from GAM model C pool Cq", limits=c(-8,+8))
 ```
+
+
+# 3. Predictions

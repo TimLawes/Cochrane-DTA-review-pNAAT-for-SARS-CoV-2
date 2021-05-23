@@ -1,11 +1,11 @@
 ---
 title: "R Notebook for Cochrane systematic review on pNAAT for SARS-CoV-2"
 output:
+  word_document:
+    toc: yes
   html_notebook:
     toc: yes
     toc_float: yes
-  word_document:
-    toc: yes
   html_document:
     df_print: paged
     toc: yes
@@ -433,8 +433,11 @@ We used the *madad* function of the *mada* package to test for heterogeneity in 
 ```{r message=FALSE, warning=FALSE}
 
 # Use 'madad' function 
-confmatrix <- metadata %>% dplyr::select(test_eval_id,t_p,f_n,f_p,t_n, pool_size_gp, pool_size, pnaat, naat, sample, pool_type)
+confmatrix <- metadata %>% dplyr::select(test_eval_id,t_p,f_n,f_p,t_n, pool_size_gp, disease_p, disease_n, pool_size, pnaat, naat, sample, pool_type)
 confmatrix <- confmatrix %>% rename(c(Study = test_eval_id, TP=t_p, FN=f_n, FP=f_p, TN=t_n))
+confmatrix <- confmatrix %>% mutate (fpr = FP/disease_n)
+confmatrix <- confmatrix %>% mutate (point = TP/disease_p)
+confmatrix <- confmatrix %>% mutate (n=TP+FP+TN+FN)
 hg <- madad(confmatrix)
 heterogeneity_test_sensitivity <- c(hg[[c(4,1)]],hg[[c(4,2)]],hg[[c(4,3)]])
 heterogeneity_test_specificity <- c(hg[[c(5,1)]],hg[[c(5,2)]],hg[[c(5,3)]])
@@ -459,7 +462,7 @@ Descriptive plots of observed and estimated sensitivity and 1-specificity (FPR) 
 
 ```{r message=FALSE, warning=FALSE}
 # Descriptive plots
-p1cor <- ggplot (corrfprse, aes(x= fpr, y=point, size=n))+
+p1cor <- ggplot (confmatrix, aes(x= fpr, y=point, size=n))+
   geom_point(alpha=0.1, colour ="blue")+
   ylim(0,1)+
   xlim(0,1)+
@@ -474,13 +477,13 @@ p2cor <- plotdata(confmatrix2, two.by.two=TRUE, alpha.p=0.1, max.size=15)+
   scale_x_continuous("1-specificity", limits = c(-0.0001, 0.0015))+
   scale_y_continuous ("Sensitivity", breaks=seq(0,1,0.1), limits = c(0,1))
 
-ggarrange(p1cor, p2cor, ncol=2)
+ggarrange(p1cor, p2cor)
 ```
 ### 3.2.2 Correlation of Sensitivity and FPR
 We used the *crosstable_statistics* function of the *sjtools* package to derive a Spearman's rank  correlation of sensitivity and FPR, weighted by overall number tested (n).
 
 ```{r message=FALSE, warning=FALSE}
-cts<- crosstable_statistics(data=corrfprse, x1=fpr, x2=point, statistics="spearman", weights= corrfprse$totalsamples)
+cts<- crosstable_statistics(data=confmatrix, x1=fpr, x2=point, statistics="spearman", weights= corrfprse$totalsamples)
 cts2 <- c(cts$estimate, cts$p.value)
 z = -0.862 + sqrt (0.743-(2.404*log(cts$p.value)))
 int = 1.96*(cts$estimate/z)
@@ -1890,6 +1893,13 @@ R2_9m <- partR2(ysemp9, data = y1semp, R2_type = "marginal", nboot = 10)
 R2_9m
 R2_9parts <- partR2(ysemp9, data = y1semp, partvars = c("reg", "naat","modified_interpret","modified_protocol","sample","log2p","weak_posfold"), R2_type= "marginal", nboot=10)
 summary(R2_9parts)
+alt <- cbind (R2_9parts$IR2_boot, R2_9parts$BW_boot)
+```
+```{r message=FALSE, warning=FALSE}
+alt <- R2_9parts$IR2
+alt
+alt<- gt(alt)
+alt
 ```
 
 #### Plots summarising sources of heterogeneity
@@ -1964,8 +1974,7 @@ theme_set(theme_ggeffects())
 sampletype <- ggeffect(ysemp9, terms = c("log2p", "sample", "naat","weak_posfold [meansd]"))
 sampletype <- sampletype %>% mutate(x = x+2.85895883542674)
 
-sampletype2 <- ggemmeans(ysemp9, terms = c("log2p", "sample", "naat"), type="re",
-                         condition=c(weak_posfold=-0.43408208))
+sampletype2 <- ggemmeans(ysemp9, terms = c("log2p", "sample", "naat"), type="fe")
 sampletype2 <- sampletype2 %>% mutate(x = x+2.85895883542674)
 
 ggplot(sampletype2, aes(x = x, y = predicted, group = group, colour = group, 
@@ -2244,7 +2253,7 @@ outdata4 = makeData(data =Bmpall[Bmpall$pool_size_gp =="4 to 7",], model.type = 
 
 bm4<- runModel(outdata4, outpriors, link="logit", quantiles=c(0.025,0.5,0.975), verbose=FALSE)
 
-BMP4out = makeObject(model = bm4, nsample =  =1000)
+BMP4out = makeObject(model = bm4, nsample =1000)
 
 plot(BMP4out, var.type = "mu", overlay.prior = TRUE, lwd = 2, save = FALSE)
 plot(BMP4out, var.type = "nu", overlay.prior = TRUE, lwd = 2, save = FALSE)
@@ -2257,5 +2266,6 @@ forest(BMP4out, accuracy.type="sens", est.type="mean", p.cex="scaled", p.pch=15,
 ## 9.4 Metaregression
 
 ## 9.5 Sensitivity analysis
+
 
 
