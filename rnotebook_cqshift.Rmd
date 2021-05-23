@@ -1,0 +1,290 @@
+---
+title: "R Notebook for Cq Shift"
+output:
+  html_notebook:
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+# Preliminaries
+
+## Motivation
+This notebook provides the code required for defining of "Cq shift" - the difference between the quantification cycle (Cq) of a pool test and the Cq of component samples measured in individual sample tests. Cq shift arises from the effective 'dilution' of viral loads in positive samples when mixed (pooled) with virus-negative samples. It therefore takes more cycles of PCR to amplify the viral genetic material and make it detectable. 
+
+Alongside other variables, including the Cq distribution within tested samples (a higher % of 'weak positive' samples with low viral load increases risks of non-detection after Cq shift), degree of clustering of positive samples within pools, and pool size essential variable for determining the sensitivity of pooled testing, "cq shift" is a key determinant of sensitivity for pooled testing.
+
+There were two reasons to examin "Cq shift" closely within this DTA systematic review:
+
+### To provide population-adjusted measures of sensitivity (and specificity) for meta-analysis
+The primary meta-analysis combined studies that took a true representative sample of samples (single-gate, quality-group 1) and those that took a purposive sample of positives and combined those with negative samples within pools (two-gate, case-control type, quality group 2). The latter typically over-sampled positives with low viral loads ("weak positives") to verify limits of analytical sensitivity. However, this will lead to an underestimate of 'real-world' clinical sensitivity which depends on the mix (distribution) of viral loads in the test poopulation.
+
+Several two-gate (quality group 2) studies provided "population adjusted" estimates of real-world clinical sensitivity alongside the observed results from a purposive sample. However, we wished to used a consistent method for obtaining "population-adjusted" summmary estimates of accuracy.
+
+### To explore pool-testing protocols that may improve analytical sensitivity
+
+## Methodology
+Our overall approach mirrors that proposed by the US FDA:
+1. *Observe* Base predictions on laboratory observations of change in Cq (Cq shift) and probability of detection of a purposive sample of clinical specimens when tested in pools of desired size.
+2. *Model* Define the relationship between the Cq measure from individual sample testing and the expected Cq of pools containing positive sample(s), and the probability of detection at pre-defined Cq cut-offs.
+3. *Predict* In a Monte-carlo simulation, take random-draws from a distribution summarising the observed population Cq frequency distribution and apply the model in step 2 to each random draw to obtain representative pool Cq values.
+4. *Estimate* Derive population-adjusted sensitivity, by combining the pool Cq values predicted in step 3 with a probit fit describing the likelihood of detection by Cq value for the assay.
+
+
+## Load packages required
+```{r message=FALSE, warning=FALSE}
+
+library(gamm4)
+library(tidyverse)
+library(earth)
+library(forecast)
+library(stats)
+library(lmtest)
+library (mgcv)
+library (mgcViz) 
+library(visibly) # Install from devtools::install_github("m-clark/visibly")
+library (shoenberg) # Installfrom devtools::install_github('gavinsimpson/schoenberg')
+library(brms)
+```
+
+
+# 1. Observations
+
+## 1.1 load data
+The code below loads the "Cq shift" data obtained from studies included in the Cochrane review, and edits to create two datasets in formats required for different methods.
+
+* NOTE THIS IS CURRENTLY ONLY AN EXAMPLE*
+
+```{r message=FALSE, warning=FALSE}
+
+shift <- read_csv("egshift.csv", col_types =cols(
+  gene = col_factor(),
+  indiv= col_factor(),
+  quality=col_factor(),
+  eval=col_factor(),
+  study =col_factor(),
+  pool_id = col_factor()
+  ))
+
+# Create geometric mean for each pool and theoretical (expected) pool Cq
+gm_mean = function(x, na.rm=TRUE){
+  exp(sum(log(x[x > 0]), na.rm=na.rm) / length(x))
+}
+
+shift2 <- shift %>% group_by(pool_id) %>% summarise (
+  pool_exp1 = -log2(sum(2^(-cq_ist))/10), geom= gm_mean(cq_ist),pos=n_distinct(indiv))
+shift2$pos <-factor(shift2$pos)
+shiftnew <- left_join(shift,shift2, by="pool_id")
+shiftnew <- shiftnew %>% mutate (gap = cq_pool-pool_exp1)
+shiftnew <- shiftnew %>% mutate (meanCq = (cq_pool+pool_exp1)/2)
+```
+
+## 1.2 review data
+```{r message=FALSE, warning=FALSE}
+ggplot(shiftnew, aes(x = pool_exp1, y = cq_pool, colour = gene)) +
+    geom_point() +
+    geom_smooth(method = 'loess', se = FALSE)
+ggplot(shiftnew, aes(x = geom, y = cq_pool, colour=gene)) +
+    geom_point() +
+    geom_smooth(method = 'loess', se = FALSE)
+```
+
+
+# 2. Model Cq shift
+
+## Explanation
+Standard methods exist in laboratory and medical science for comparing measures, including Bland-Altman plots /analysis, Probability of agreement analysis, Passing-Bablok etc. However, these have limitations for the our purpose of modelling expected Cq shift:
+
+1. Cq measures are made (often) on multiple SARS-CoV-2 gene targets in each sample, and the impact of pooling on Cq can vary between genes.
+2. Multiple positive samples can arise within the same pool.
+3. The probability of multiple positive samples being in the same pool varies with prevalence, and clustering.
+
+We therefore explored the use of Generalised Additive (Mixed) Models (GA(M)M). GAM take the general form:
+
+$$ g(E(Y)) = \beta_0 + \sum_{k = 1}^{p}f_k x_k + \epsilon,\\     \epsilon \sim~N(0, \sigma^2) $$
+where;
+
+* $E(Y)$ = is the expected value of the dependent variable
+* $g$  =  is a link function relating the expected value to predictor variables
+* $\beta_0$ = a 
+* $x_k$ = 1....p predictor variables
+* $f$ = smooth non-parametric functions each of which consists of one or more splines connected by knots.
+
+
+We start from theoretical assumption that if a single positive sample is mixed within a pool, with other samples being negative, the pool Cq is expected to be:
+
+$$ Cq_{pool,exp} = Cq_{sample}- log2(n) $$
+
+where; 
+    Cqist = individual sample test Cq
+    n = pool size
+
+This can be generalised (as per Wang et al. 2020) to a scenario of "i" positive samples within a pool as:
+
+$$ Cq_{pool,exp} = - log2(\sum_{i = 1}^{n}(2^{-Cq_{sample}})/n) $$
+This 'expected' Cq effectively integrates information on (1) the Cq values of i=1...n positive samples contained in a pool and (2) the pool size. It can be taken as the baseline assumption of 'Cq shift' against which observed Cq shift can be compared. 
+
+We considered three general models to predict pool Cq based on the limited data available from studies within the review:
+
+#### Model A: Without gene-specific smooths
+$$ g(E(Y)) = \beta_0 + \beta_1(Num_{pos})+ \beta_2(gene)+ f_1 (Cq_{\text{poolexp}}) + \epsilon,\\     \epsilon \sim~N(0, \sigma^2)$$
+gam(cq_pool~1+pos+gene+s(pool_exp1, k=5)
+
+
+#### Model B With gene-specific smooths
+$$ g(E(Y)) = \beta_0 + \beta_1(Num_{pos})+ \beta_2(gene)+ f_1 (Cq_{\text{poolexp}}, gene) + \epsilon,\\     \epsilon \sim~N(0, \sigma^2)$$
+Note that separate effects of gene on level  ($\beta_2$) can be removed.
+If a comparison of the smooths for each gene fail to show a significant difference consideration of a single smooth describing relationship between expected pool Cq and the observed pool Cq should be considered.
+
+#### Model C: Tensor product of expected pool Cq and control Cq
+
+$$ g(E(Y)) = \beta_0 + \beta_1(gene)+ \beta_1(N_{pos})+ f_1 (Cq_{\text{poolexp}} \otimes Cq_{control}) + \epsilon,\\     \epsilon \sim~N(0, \sigma^2)$$
+This model  considers variation in PCR efficiency (represented by control Cq, or (if available) as derived from slope of standard curve.
+
+## Diagnostic checks on GAM Fits
+Following the recommendations of Wood, Simpson and others, we will
+
+* Fit using REML and thin-plate regression splines (TPRS)
+* Identify the simplest model (fewest knots (lowest K), and smoothest (highest Sp)) which adequately fits the data
+* Fixed and random effects should be significant or near  significant (p<0.1)
+* The K-index should be >1 where possible, or at least non-significant (p>0.05)
+indicating sufficient knots have been allowed.
+* A smoothing parameter of 0.6 can be used to start, reducing if necessary to allow less smooth fits.
+* The historgram of residuals should approximate normal distribution with mean zero.
+* Multiconcurvity should be excluded by examining 'worst" estimates in concurvity measures. If any are >0.8 need careful review of variables and consideration of exclusion.
+
+## Fit models 
+### Model A without gene-specific smooths
+```{r message=FALSE, warning=FALSE}
+
+# model fit
+gamm1a<- gam(cq_pool~1+pos+gene+s(pool_exp1, k=-1),
+              family=gaussian(),data=shiftnew, method = "REML")
+plot(gamm1a, seWithMean=TRUE, shade=TRUE, residuals=TRUE, shade.col="lightblue")
+plot(gamm1a, seWithMean=TRUE, shade=TRUE, residuals=TRUE, shade.col="lightblue",
+     shift = coef(gamm1)[1])
+gamm1aviz <- getViz(gamm1a)
+
+# Diagnostic check
+check.gamViz(gamm1aviz, a.hist = list(bins = 10))
+concurvity(gamm1a, full=TRUE)
+concurvity(gamm1a, full=FALSE)
+
+# plots
+gamm1aplot <- plot( sm(gamm1aviz, 1) )
+gamm1aplot + l_fitLine(colour = "red")+
+    l_ciLine(mul = 5, colour = "blue", linetype = 2) + 
+    l_points(shape = 19, size = 1.5, alpha = 0.3) + theme_classic()
+print(plot(gamm1aviz, allTerms = T), pages = 1)
+
+# Write to file
+modout1a<- as_tibble(gamm1a[["fitted.values"]])
+modout1a<- cbind(shiftnew,modout1a)
+write_csv(modout1a, "modout1.csv")
+``` 
+### Model B with gene-specific smooths
+```{r message=FALSE, warning=FALSE}
+
+gamm1b<- gam(cq_pool~1+pos+s(pool_exp1, by=gene, k=-1),
+              family=gaussian(),data=shiftnew, method = "REML")
+summary(gamm1b)
+
+# diagnostic checks
+gamm1bviz <- getViz(gamm1b)
+check.gamViz(gamm1bviz, a.hist = list(bins = 10))
+concurvity(gamm1b, full=TRUE)
+concurvity(gamm1b, full=FALSE)
+
+# plots
+gamm1bplot <- plot( sm(gamm1bviz, 1) )
+gamm1bplot + l_fitLine(colour = "red")+
+    l_ciLine(mul = 5, colour = "blue", linetype = 2) + 
+    l_points(shape = 19, size = 1.5, alpha = 0.3) + theme_classic()
+print(plot(gamm1bviz, allTerms = T), pages = 1)
+
+# Explore if there is a difference in smooths between gene targets
+plotDiff(s1 = sm(gamm1bviz, 1), s2 = sm(gamm1bviz, 2)) + l_ciPoly() + 
+l_fitLine() + geom_hline(yintercept = 0, linetype = 2)+
+    labs(x = 'Expected pool Cq', y = 'Difference in smooth')
+
+#Write fitted values to file
+modout1b<- as_tibble(gamm1b[["fitted.values"]])
+modout1b<- cbind(shiftnew,modout1b)
+write_csv(modout1c, "modout1b.csv")
+```
+
+### Model C with tensor product of expected pool Cq x control Cq
+```{r message=FALSE, warning=FALSE}
+
+
+gamm1c<- gam(cq_pool~1+pos+gene+te(pool_exp1,control,k=-1),
+              family=gaussian(),data=shiftnew, sp = 0.1, method = "REML")
+summary(gamm1c) # summarise model
+gamm1cviz <- getViz(gamm1c) # convert to gamviz object
+
+# diagnostic checks
+check.gamViz(gamm1cviz, a.hist = list(bins = 10))
+concurvity(gamm1c, full=TRUE)
+concurvity(gamm1c, full=FALSE)
+gamm1cviz2 <- getViz(gamm1cviz, nsim = 50)
+
+# Check for proportional bias or heteroskedasticity in residuals
+gridPrint(check1D(gamm1cviz2 , "pool_exp1") + l_gridCheck1D(gridFun = mean, showReps = TRUE))
+gridPrint(check1D(gamm1cviz2 , "pool_exp1") + l_gridCheck1D(gridFun = sd, showReps = TRUE))
+gridPrint(check1D(gamm1cviz2 , "control") + l_gridCheck1D(gridFun = mean, showReps = TRUE))
+gridPrint(check1D(gamm1cviz2 , "control") + l_gridCheck1D(gridFun = sd, showReps = TRUE))
+
+# Plots
+print(plot(gamm1cviz, allTerms = T), pages = 1)
+
+# 3D-plot of tensor product surface
+plotRGL(sm(gamm1cviz, 1), fix = c("z" = 0), residuals = TRUE)
+
+# Write fitted values to file
+modout1c<- as_tibble(gamm1c[["fitted.values"]])
+modout1c<- cbind(shiftnew,modout1c)
+write_csv(modout1c, "modout1c.csv")
+
+
+```
+## Compare models
+### Compare A,B and C
+
+### Compare to Wang et al.(general expectation of pool shift)
+```{r message=FALSE, warning=FALSE}
+modout1a <-modout1a %>% dplyr::mutate (wangres = cq_pool-pool_exp1)
+modout1a <-modout1a %>% mutate (gamres = cq_pool-value)
+modout1b <-modout1b %>% dplyr::mutate (wangres = cq_pool-pool_exp1)
+modout1b <-modout1b %>% mutate (gamres = cq_pool-value)
+modout1c <-modout1c %>% dplyr::mutate (wangres = cq_pool-pool_exp1)
+modout1c <-modout1c %>% mutate (gamres = cq_pool-value)
+ci <- check1D(gamm1cviz2 , "control") + l_gridCheck1D(gridFun = sd, showReps = TRUE)
+ggplot(modout1c, aes(x=pool_exp1, y=wangres))+
+geom_point()+
+geom_hline(yintercept = 0)+
+scale_y_continuous("Residuals from expected pool Cq (Wang)", limits=c(-8,+8))
+
+# Plot 1a residuals
+ggplot(modout1a, aes(x=value, y=gamres))+
+geom_point()+
+geom_hline(yintercept = 0)+
+scale_y_continuous("Residuals from GAM model A pool Cq", limits=c(-8,+8))
+
+# Plot 1b residuals
+ggplot(modout1b, aes(x=value, y=gamres))+
+geom_point()+
+geom_hline(yintercept = 0)+
+scale_y_continuous("Residuals from GAM model B pool Cq", limits=c(-8,+8))
+
+# Plot 1c residuals
+ggplot(modout1c, aes(x=value, y=gamres))+
+geom_point()+
+geom_hline(yintercept = 0)+
+scale_y_continuous("Residuals from GAM model C pool Cq", limits=c(-8,+8))
+```
